@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Stock de asfalto · INGECO</title>
+<meta name="theme-color" content="#f5f4f0">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>:root{--azul:#1e3a8a;--azul-claro:#2b4fb3;--azul-suave:#e6ecfb;--tinta:#0f1a3d;--teal:#0e8a7a;--teal-suave:#dcf1ee;--ambar:#d98f00;--ambar-suave:#fff1cf;--ambar-texto:#8a5a00;--alerta:#b8410e;--alerta-suave:#fbe6dc;--fondo:#f5f4f0;--fondo-2:#ebe9e3;--superficie:#fff;--texto:#171c2e;--texto-2:#5b6274;--texto-3:#8a90a0;--linea:#e2dfd7;--linea-fuerte:#c9c5bb;--radio:14px;--radio-s:10px;--barra-h:56px;--cuerpo:system-ui,sans-serif;--display:system-ui,sans-serif}[data-ig-volver]{display:none}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://app.ingecosa.com.ar/ingeco.css">
+<script src="https://app.ingecosa.com.ar/ingeco.js" defer></script>
+<script src="https://app.ingecosa.com.ar/guard.js" data-modulo="ASFALTO"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+body{margin:0;font-family:var(--cuerpo);background:var(--fondo);color:var(--texto);font-size:15px}
+header{background:color-mix(in srgb,var(--fondo) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--linea);color:var(--texto);height:var(--barra-h);padding:0 10px 0 6px;gap:8px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5}
+header h1{font-family:var(--display);font-size:1.2rem;margin:0;font-weight:600;color:var(--tinta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .logo{height:18px;width:auto;margin:0 10px 0 6px;flex:none;display:block}
+@media(max-width:400px){header h1{font-size:1.05rem}header .logo{height:16px;margin-right:8px}#upd{display:none}}
+header .izq{display:flex;align-items:center;min-width:0}header .izq>div{min-width:0}header .der{display:flex;align-items:center;flex:none}
+#login{position:fixed;inset:0;background:var(--tinta);z-index:50;display:none;align-items:center;justify-content:center;padding:24px 16px}
+#login.on{display:flex}
+#login .box{background:var(--superficie);border-radius:20px;padding:36px 28px 24px;width:100%;max-width:380px;text-align:center;box-shadow:var(--sombra-alta)}
+#login img{height:auto;width:200px;max-width:76%;margin:0 auto 20px;display:block}
+#login h2{margin:0 0 4px;font-family:var(--display);font-size:1.3rem;font-weight:600;color:var(--tinta)}
+#login p{margin:0 0 8px;font-size:14px;color:var(--texto-2)}
+#login label{text-align:left;font-size:.78rem;color:var(--texto-2);text-transform:uppercase;letter-spacing:.07em}
+#login #lPin{text-align:center;letter-spacing:6px;font-size:22px}
+#salir{border:1px solid var(--linea-fuerte);background:var(--superficie);color:var(--azul);font-size:13px;font-weight:600;margin-left:10px;min-height:34px;padding:0 12px;border-radius:999px}
+header small{color:var(--texto-2);font-size:11px}
+.tabs{display:flex;gap:6px;background:color-mix(in srgb,var(--fondo) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--linea);padding:8px 12px;position:sticky;top:var(--barra-h);z-index:4;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:1 0 auto;border:1px solid var(--linea-fuerte);background:transparent;padding:0 14px;min-height:38px;border-radius:999px;font-size:14px;font-weight:500;color:var(--texto-2);white-space:nowrap}
+.tabs button.on{background:var(--tinta);color:var(--fondo);border-color:var(--tinta)}
+main{padding:14px;max-width:960px;margin:0 auto}
+.sec{display:none}.sec.on{display:block}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+@media(min-width:700px){.kpis{grid-template-columns:repeat(4,1fr)}}
+.kpi{background:var(--superficie);border:1px solid var(--linea);border-radius:var(--radio);padding:12px 14px}
+.kpi .l{font-family:var(--display);font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--texto-2);font-weight:600}
+.kpi .v{font-family:var(--display);font-size:26px;font-weight:600;margin-top:4px;color:var(--tinta);font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12px;color:var(--texto-2);margin-top:2px}
+.kpi.ok .v{color:var(--teal)}.kpi.mal .v{color:var(--alerta)}.kpi.warn .v{color:var(--ambar-texto)}
+.kpi.big{grid-column:1/-1}.kpi.big .v{font-size:36px}.kpi.big.ok{border-color:var(--teal);background:var(--teal-suave)}.kpi.big.mal{border-color:var(--alerta);background:var(--alerta-suave)}.kpi.big.warn{border-color:var(--ambar);background:var(--ambar-suave)}
+@media(min-width:700px){.kpi.big{grid-column:span 2}}
+.tanque{height:10px;border-radius:999px;background:var(--fondo-2);margin-top:8px;overflow:hidden}.tanque i{display:block;height:100%;background:var(--azul);border-radius:999px}
+.kpi.mal .tanque i{background:var(--alerta)}.kpi.ok .tanque i{background:var(--teal)}
+.card{background:var(--superficie);border:1px solid var(--linea);border-radius:var(--radio);padding:14px 16px;margin-bottom:14px}
+.card h3{margin:0 0 10px;font-family:var(--display);font-size:1.1rem;font-weight:600;color:var(--tinta)}
+canvas{width:100%!important;max-height:280px;touch-action:pan-y}
+.seg{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.seg button{flex:1 1 auto;border:1px solid var(--linea-fuerte);background:transparent;padding:0 12px;min-height:36px;border-radius:999px;font-size:13px;font-weight:500;color:var(--texto-2)}
+.seg button.on{background:var(--tinta);color:var(--fondo);border-color:var(--tinta)}
+.chbox{position:relative;height:280px}
+.det{display:none;margin-top:10px;border:1px solid var(--linea);border-left:4px solid var(--azul);border-radius:var(--radio-s);padding:10px 34px 10px 12px;font-size:13px;line-height:1.45;background:var(--fondo);position:relative;font-variant-numeric:tabular-nums}
+.det.on{display:block}.det b{color:var(--tinta)}.det .x{position:absolute;top:4px;right:4px;border:0;background:none;font-size:20px;line-height:1;color:var(--texto-2);padding:6px 8px}
+.det .r{display:flex;justify-content:space-between;gap:8px}.det .sp{height:6px}
+.hint0{color:var(--texto-2)}
+.aviso{border-radius:var(--radio-s);padding:10px 12px;font-size:13px;margin-bottom:12px;font-weight:500}
+.aviso.warn{background:var(--ambar-suave);border:1px solid var(--ambar);color:var(--ambar-texto)}
+.aviso.mal{background:var(--alerta-suave);border:1px solid var(--alerta);color:var(--alerta)}
+.aviso.ok{background:var(--teal-suave);border:1px solid var(--teal);color:var(--teal)}
+label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px;color:var(--texto)}
+input,textarea,select{width:100%;padding:12px;border:1px solid var(--linea-fuerte);border-radius:var(--radio-s);background:var(--superficie);font-size:16px;font-family:inherit}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--azul-claro);outline-offset:1px;border-color:var(--azul-claro)}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.hint{font-size:12px;color:var(--texto-2);margin-top:4px}
+.btn{width:100%;min-height:46px;padding:0 14px;border:1px solid transparent;border-radius:var(--radio-s);background:var(--azul);color:#fff;font-size:16px;font-weight:600;margin-top:16px}
+.btn:active{opacity:.85}.btn:disabled{opacity:.5}
+.btn.sec2{background:var(--superficie);color:var(--azul);border-color:var(--linea-fuerte)}
+.btn.rojo{background:var(--alerta)}
+.preview{background:var(--azul-suave);border-radius:var(--radio-s);padding:10px 12px;margin-top:12px;font-size:13px;line-height:1.6;font-variant-numeric:tabular-nums}
+.preview b{color:var(--tinta)}
+.dest{border:1px solid var(--linea);border-radius:var(--radio-s);padding:10px 12px;margin-top:8px;background:var(--fondo);display:flex;align-items:center;gap:10px}
+.dest label{margin:0;flex:1}.dest input{width:120px;text-align:right}
+.unid{font-size:13px;color:var(--texto-2);min-width:14px}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th{background:var(--fondo);color:var(--texto-2);padding:8px 6px;text-align:left;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border-bottom:1px solid var(--linea-fuerte)}
+td{padding:8px 6px;border-bottom:1px solid var(--linea);white-space:nowrap}
+tr:nth-child(even) td{background:color-mix(in srgb,var(--fondo) 45%,var(--superficie))}
+td.n,th.n{text-align:right}
+.pos{color:var(--teal);font-weight:600}.neg{color:var(--alerta);font-weight:600}.amb{color:var(--ambar-texto);font-weight:600}
+.tag{display:inline-block;font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:1px 7px;border-radius:4px;background:var(--fondo-2);color:var(--texto-2);margin-left:4px;vertical-align:1px}
+.tag.est{background:var(--ambar-suave);color:var(--ambar-texto)}
+.tbl{overflow-x:auto}
+.toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:var(--tinta);color:var(--fondo);padding:11px 18px;border-radius:var(--radio-s);font-size:14px;opacity:0;transition:.3s;pointer-events:none;z-index:60;max-width:90%;text-align:center;box-shadow:var(--sombra-alta)}
+.toast.on{opacity:1}.toast.ok{background:var(--teal);color:#fff}.toast.mal{background:var(--alerta);color:#fff}
+.loading{text-align:center;padding:40px;color:var(--texto-2)}
+dl{font-size:13px}dt{font-weight:600;margin-top:10px;color:var(--tinta)}dd{margin:2px 0 0 0;color:var(--texto);line-height:1.5}
+.small{font-size:12px;color:var(--texto-2)}
+.editar{border:0;background:none;color:var(--azul);font-weight:600}.editar.rojo{color:var(--alerta)}
+.savebar{position:fixed;left:0;right:0;bottom:0;background:var(--superficie);border-top:1px solid var(--linea);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:none;gap:10px;align-items:center;z-index:9;box-shadow:var(--sombra-media)}.savebar.on{display:flex}.savebar span{flex:1;font-size:13px;color:var(--texto)}.savebar .btn{width:auto;margin:0;padding:0 18px}
+</style>
+</head>
+<body>
+<div id="login"><div class="box"><img src="logo.png" alt="INGECO"><h2>Stock de asfalto</h2><p>Planta asfáltica · salida de mezcla</p><label>PIN de la planta</label><input type="password" id="lPin" inputmode="numeric" placeholder="••••"><button class="btn" id="bLogin" onclick="login()">Entrar</button></div></div>
+<header><div class="izq"><button class="ig-volver" data-ig-volver aria-label="Volver a la App INGECO"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button><img class="logo" src="logo.png" alt="INGECO" data-ig-ocultar-en-app><div><h1>Stock de asfalto</h1><small id="who"></small></div></div><div class="der"><small id="upd"></small><button id="salir" onclick="salir()">salir</button></div></header>
+<div class="tabs">
+  <button class="on" data-t="panel">Panel</button>
+  <button data-t="carga">Cargar día</button>
+  <button data-t="dias">Días</button>
+  <button data-t="ajustes">Ajustes</button>
+  <button data-t="ayuda">Ayuda</button>
+</div>
+<main>
+
+<!-- ============ PANEL ============ -->
+<section id="panel" class="sec on">
+  <div id="avisos"></div>
+  <div class="kpis" id="kpis"><div class="loading">Cargando…</div></div>
+  <div class="card"><h3>Consumo de asfalto y salida de mezcla</h3>
+    <div class="seg" data-ch="chCurva"><button data-v="curva" class="on">Curvas por día</button><button data-v="porc">% de asfalto real</button></div>
+    <div class="chbox"><canvas id="chCurva"></canvas></div>
+    <div class="det" id="det-chCurva"></div><div class="small hint0" style="margin-top:6px">Tocá un día para ver el detalle debajo.</div></div>
+  <div class="card"><h3>Asfalto en tanque</h3>
+    <div class="chbox"><canvas id="chStock"></canvas></div>
+    <div class="det" id="det-chStock"></div><div class="small hint0" style="margin-top:6px">Puntos: stock medido. Línea punteada: estimado con el % teórico los días sin medición.</div></div>
+  <div class="card"><h3>Mezcla por destino</h3><div id="porDestino" class="small"></div></div>
+</section>
+
+<!-- ============ CARGA ============ -->
+<section id="carga" class="sec">
+  <div class="card">
+    <h3>Cierre del día</h3>
+    <label>Fecha</label><input type="date" id="fFecha">
+    <label>Mezcla que salió <span class="small">(toneladas por destino; dejá vacío si no salió)</span></label>
+    <div id="fSalidas"></div>
+    <label>Asfalto recibido hoy <span class="small">(t, vacío = no llegó)</span></label><input type="number" id="fRec" inputmode="decimal" min="0" step="0.1" placeholder="0">
+    <label>Asfalto en el tanque al cierre <span class="small">(t)</span></label><input type="number" id="fStock" inputmode="decimal" min="0" step="0.1" placeholder="Ej: 42,5">
+    <div class="hint">Si hoy no se midió, dejalo vacío: el consumo se calcula cuando se vuelva a medir.</div>
+    <label>Observaciones <span class="small">(opcional)</span></label><textarea id="fObs" rows="2" placeholder="Paradas, camión de asfalto, fórmula…"></textarea>
+    <div class="preview" id="prev"></div>
+    <button class="btn" id="bGuardar" onclick="guardar()">Guardar día</button>
+  </div>
+</section>
+
+<!-- ============ DÍAS ============ -->
+<section id="dias" class="sec">
+  <div class="card tbl"><h3>Detalle por día</h3><table id="tDias"></table></div>
+  <div class="card tbl"><h3>Tramos entre mediciones del tanque</h3><div class="hint" style="margin-bottom:8px">El consumo real solo se conoce entre dos mediciones: stock anterior + recibido − stock actual.</div><table id="tTramos"></table></div>
+</section>
+
+<!-- ============ AJUSTES ============ -->
+<section id="ajustes" class="sec">
+  <div class="card">
+    <h3>Parámetros</h3>
+    <div id="cfgForm"></div>
+  </div>
+  <div class="savebar" id="savebar"><span>Hay cambios sin guardar</span><button class="btn" id="bCfg" onclick="guardarConfig()">Guardar</button><button class="btn sec2" onclick="descartarConfig()">Descartar</button></div>
+</section>
+
+<!-- ============ AYUDA ============ -->
+<section id="ayuda" class="sec">
+  <div class="card">
+    <h3>Cómo se usa</h3>
+    <dl>
+      <dt>Todos los días, al cierre de la planta</dt><dd>Pestaña <b>Cargar día</b>: cuántas toneladas de mezcla salieron para cada destino, si llegó asfalto (en t) y cuánto asfalto queda en el tanque. Guardar. Si se carga dos veces la misma fecha, se reemplaza lo anterior.</dd>
+      <dt>Consumo de asfalto</dt><dd>Se calcula entre dos mediciones del tanque: <b>stock anterior + asfalto recibido − stock actual</b>. Si pasaron varios días sin medir, el consumo del tramo se reparte entre esos días según la mezcla que salió cada uno.</dd>
+      <dt>% de asfalto real</dt><dd>Consumo de asfalto ÷ toneladas de mezcla del mismo tramo. Se compara con el % teórico de Ajustes; si se sale de la tolerancia aparece un aviso.</dd>
+      <dt>Autonomía</dt><dd>Stock actual ÷ consumo promedio de los últimos días con mezcla: cuántos días de producción quedan antes de pedir asfalto.</dd>
+      <dt>Autovías</dt><dd>La mezcla cargada para el destino "Autovías" la lee sola la app de Obra Autovías: no hace falta cargar las toneladas dos veces.</dd>
+      <dt>Avisos</dt><dd>Cada cierre manda un resumen por la App INGECO (mezcla, consumo, % real, stock). Si el stock baja del mínimo, el aviso es urgente.</dd>
+      <dt>Acceso</dt><dd>Con el PIN de la planta (se cambia en Ajustes) o directo desde la App INGECO.</dd>
+      <dt>Instalar en el celular</dt><dd>Android: Chrome → menú ⋮ → "Instalar app" / "Agregar a pantalla de inicio". iPhone: Safari → Compartir → "Agregar a inicio".</dd>
+    </dl>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = 'https://script.google.com/macros/s/AKfycbz5CO9PY0Ty7HnnAgJZ8YxKdTeSdAXWnCrfUuCPV_gIn9sFEV6wpdWyn4LcAbzTD03y/exec';
+const CACHE_D = 'asfalto_datos';
+let D = null, charts = {}, CRED = null, CFG = null;
+function credenciales() {
+  if (window.INGECO_SESION) return { sesion: window.INGECO_SESION, nombre: (window.INGECO_USUARIO && (window.INGECO_USUARIO.nombre || window.INGECO_USUARIO.email)) || 'App INGECO' };
+  try { const c = JSON.parse(localStorage.getItem('asfalto_cred') || 'null'); if (c && c.pin) return c; } catch (e) {}
+  return null;
+}
+async function api(accion, payload, conAll) {
+  const cred = CRED || credenciales();
+  if (!cred) throw new Error('Sin credenciales');
+  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ accion, payload: payload || {} }, conAll ? { con_all: 1 } : {}, cred)) });
+  const j = await r.json();
+  if (!j.ok) { if (/PIN incorrecto|Sin permiso/.test(j.error || '')) { localStorage.removeItem('asfalto_cred'); CRED = null; mostrarLogin(); } throw new Error(j.error || 'Error'); }
+  return j.data;
+}
+function mostrarLogin() { document.getElementById('login').classList.add('on'); document.getElementById('lPin').value = ''; setTimeout(() => document.getElementById('lPin').focus(), 100); }
+async function login() {
+  const pin = document.getElementById('lPin').value.trim();
+  if (!pin) return toast('Falta el PIN', 'mal');
+  const b = document.getElementById('bLogin'); b.disabled = true; b.textContent = 'Entrando…';
+  CRED = { pin };
+  try { await api('login'); localStorage.setItem('asfalto_cred', JSON.stringify(CRED)); document.getElementById('login').classList.remove('on'); cargar(); }
+  catch (e) { CRED = null; toast(e.message, 'mal'); }
+  b.disabled = false; b.textContent = 'Entrar';
+}
+function salir() { localStorage.removeItem('asfalto_cred'); try { localStorage.removeItem(CACHE_D); } catch (e) {} CRED = null; D = null; CFG = null; mostrarLogin(); }
+document.getElementById('lPin').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+const fmtN = (v, d=1) => v == null ? '—' : Number(v).toLocaleString('es-AR', {maximumFractionDigits:d});
+const fmtT = v => v == null ? '—' : fmtN(v,1) + ' t';
+const fmtP = v => v == null ? '—' : fmtN(v,2) + ' %';
+const fDia = s => { const [y,m,d] = s.split('-'); return d + '/' + m; };
+const fDiaL = s => { const [y,m,d] = s.split('-'); return d + '/' + m + '/' + y.slice(2); };
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('on')); b.classList.add('on');
+  document.querySelectorAll('.sec').forEach(s => s.classList.remove('on')); document.getElementById(b.dataset.t).classList.add('on');
+  if (b.dataset.t === 'ajustes' && !CFG) cargarConfig();
+  if (b.dataset.t === 'carga') preview();
+});
+function toast(msg, tipo) { const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast on ' + (tipo||''); setTimeout(() => t.className = 'toast', 3200); }
+
+function aplicarDatos(d) { if (!d) return; D = d; render(); try { localStorage.setItem(CACHE_D, JSON.stringify(d)); } catch (e) {} }
+function cargar() {
+  if (!(CRED || credenciales())) return mostrarLogin();
+  if (!D) { try { const c = JSON.parse(localStorage.getItem(CACHE_D) || 'null'); if (c) { D = c; render(); } } catch (e) { D = null; } }
+  api('datos').then(aplicarDatos).catch(e => toast('Error al cargar: ' + e.message, 'mal'));
+}
+
+function render() {
+  const s = D.serie, k = D.kpi, c = D.cfg;
+  document.getElementById('who').textContent = D.user === 'PIN' ? 'Planta asfáltica' : D.user;
+  document.getElementById('upd').textContent = 'act. ' + new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+  if (!document.getElementById('fFecha').value) document.getElementById('fFecha').value = D.hoy;
+  document.getElementById('avisos').innerHTML = D.avisos.map(a => '<div class="aviso ' + a.tipo + '">' + (a.tipo === 'mal' ? '⛔ ' : '⚠ ') + a.msg + '</div>').join('');
+
+  // KPIs
+  const ult = [...s].reverse().find(x => x.mezcla > 0);
+  const stockClase = k.stock == null ? '' : (k.stock < c.STOCK_MINIMO ? 'mal' : (k.stock < c.STOCK_MINIMO * 1.5 ? 'warn' : 'ok'));
+  const lleno = k.stock != null && c.CAPACIDAD_TANQUE > 0 ? Math.min(100, k.stock / c.CAPACIDAD_TANQUE * 100) : null;
+  const porcClase = v => v == null ? '' : (Math.abs(v - c.PORC_TEORICO) > c.TOLERANCIA ? 'warn' : 'ok');
+  const kp = [
+    ['Asfalto en tanque', fmtT(k.stock), (k.stockFecha ? 'medido el ' + fDiaL(k.stockFecha) : 'sin mediciones') + (k.autonomia != null ? ' · alcanza ≈ <b>' + fmtN(k.autonomia,0) + ' días</b> al ritmo actual' : '') + (lleno != null ? '<div class="tanque"><i style="width:' + lleno + '%"></i></div>' : ''), stockClase, 'big'],
+    ['% asfalto último tramo', fmtP(k.ultimoTramo ? k.ultimoTramo.porc : null), k.ultimoTramo ? fDia(k.ultimoTramo.desde) + ' → ' + fDia(k.ultimoTramo.hasta) + ' · teórico ' + fmtP(c.PORC_TEORICO) : 'falta una segunda medición', porcClase(k.ultimoTramo ? k.ultimoTramo.porc : null)],
+    ['% asfalto promedio', fmtP(k.porcAcum), fmtT(k.consumoTotal) + ' sobre ' + fmtT(k.mezclaConConsumo != null ? k.mezclaConConsumo : null) + ' de mezcla', porcClase(k.porcAcum)],
+    ['Mezcla último día', ult ? fmtT(ult.mezcla) : '—', ult ? fDiaL(ult.fecha) + ' · ' + Object.keys(ult.porDestino).filter(d => ult.porDestino[d] > 0).map(d => d + ' ' + fmtN(ult.porDestino[d],1)).join(' · ') : 'sin salidas', ''],
+    ['Consumo asfalto último día', ult && ult.consumo != null ? fmtT(ult.consumo) : '—', ult ? (ult.consumo != null ? (ult.tramoDias > 1 ? 'repartido en tramo de ' + ult.tramoDias + ' días' : 'medido ese día') : 'pendiente de medir el tanque') : '', ''],
+    ['Consumo promedio', fmtT(k.consumoProm), 'por día con mezcla (últimos 7)', ''],
+    ['Mezcla promedio', fmtT(k.mezclaProm), 'en ' + k.diasConMezcla + ' días con salida', ''],
+    ['Mezcla total', fmtT(k.mezclaTotal), 'asfalto recibido ' + fmtT(k.recibidoTotal), ''],
+  ];
+  document.getElementById('kpis').innerHTML = kp.map(x => '<div class="kpi ' + x[3] + (x[4] ? ' ' + x[4] : '') + '"><div class="l">' + x[0] + '</div><div class="v">' + x[1] + '</div><div class="s">' + x[2] + '</div></div>').join('');
+
+  // por destino
+  const pd = k.porDestino, tot = k.mezclaTotal || 0;
+  document.getElementById('porDestino').innerHTML = tot ? '<table>' + Object.keys(pd).map(d => '<tr><td>' + d + '</td><td class="n">' + fmtT(pd[d]) + '</td><td class="n">' + fmtN(pd[d]/tot*100,1) + '%</td></tr>').join('') + '<tr><td><b>Total</b></td><td class="n"><b>' + fmtT(tot) + '</b></td><td class="n">100%</td></tr></table>' : 'Sin salidas cargadas todavía.';
+
+  // tablas
+  document.getElementById('tDias').innerHTML = '<tr><th>Fecha</th><th class="n">Mezcla</th><th>Destinos</th><th class="n">Recibido</th><th class="n">Tanque</th><th class="n">Consumo</th><th class="n">% real</th><th>Obs</th><th></th></tr>' +
+    [...s].filter(x => x.cargado).reverse().map(x => '<tr><td>' + fDiaL(x.fecha) + '</td><td class="n">' + fmtN(x.mezcla,1) + '</td><td class="small">' + Object.keys(x.porDestino).filter(d => x.porDestino[d] > 0).map(d => d + ' ' + fmtN(x.porDestino[d],1)).join(' · ') + '</td><td class="n">' + (x.recibido ? fmtN(x.recibido,1) : '') + '</td><td class="n">' + (x.stock != null ? fmtN(x.stock,1) : '<span class="small">—</span>') + '</td><td class="n">' + (x.consumo != null ? fmtN(x.consumo,2) + (x.tramoDias > 1 ? '<span class="tag est">' + x.tramoDias + ' d</span>' : '') : '') + '</td><td class="n ' + (x.porc == null ? '' : x.desvio ? 'amb' : 'pos') + '">' + (x.porc != null ? fmtN(x.porc,2) + '%' : '') + '</td><td class="small">' + (x.obs || '') + '</td><td><button class="editar" onclick="editar(\'' + x.fecha + '\')">editar</button> <button class="editar rojo" onclick="borrar(\'' + x.fecha + '\')">borrar</button></td></tr>').join('');
+  document.getElementById('tTramos').innerHTML = D.tramos.length ? '<tr><th>Desde</th><th>Hasta</th><th class="n">Días</th><th class="n">Stock ini</th><th class="n">Recibido</th><th class="n">Stock fin</th><th class="n">Consumo</th><th class="n">Mezcla</th><th class="n">% real</th></tr>' +
+    [...D.tramos].reverse().map(t => '<tr><td>' + fDiaL(t.desde) + '</td><td>' + fDiaL(t.hasta) + '</td><td class="n">' + t.dias + '</td><td class="n">' + fmtN(stockEn(t.desde),1) + '</td><td class="n">' + fmtN(t.recibido,1) + '</td><td class="n">' + fmtN(stockEn(t.hasta),1) + '</td><td class="n ' + (t.raro ? 'neg' : '') + '">' + fmtN(t.consumo,2) + '</td><td class="n">' + fmtN(t.mezcla,1) + '</td><td class="n ' + (t.porc == null ? '' : Math.abs(t.porc - c.PORC_TEORICO) > c.TOLERANCIA ? 'amb' : 'pos') + '">' + (t.porc != null ? fmtN(t.porc,2) + '%' : '—') + '</td></tr>').join('') : '<tr><td class="small">Todavía no hay dos mediciones del tanque.</td></tr>';
+
+  // gráficos
+  const CAL = s.map(x => x.fecha); window.CAL = CAL;
+  const lbl = CAL.map(fDia), G = igp();
+  VISTAS.chCurva = { det: i => detalleDiaHTML(i), vistas: {
+    curva: () => ({ type:'bar', data:{ labels:lbl, datasets:[
+      { type:'bar', label:'Mezcla que salió (t)', data:s.map(x => x.mezcla), backgroundColor:alfa(G[0], .25), borderRadius:3, yAxisID:'yM', order:3 },
+      { type:'line', label:'Consumo de asfalto (t)', data:s.map(x => x.consumo), borderColor:G[1], backgroundColor:G[1], tension:.25, pointRadius:3, spanGaps:true, yAxisID:'y', order:1 },
+      { type:'line', label:'Asfalto recibido (t)', data:s.map(x => x.recibido || null), borderColor:G[2], backgroundColor:G[2], pointRadius:5, pointStyle:'triangle', showLine:false, yAxisID:'y', order:0 } ]},
+      options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:14}}}, scales:{ y:{beginAtZero:true, title:{display:true,text:'t asfalto'}}, yM:{position:'right', beginAtZero:true, grid:{drawOnChartArea:false}, title:{display:true,text:'t mezcla'}} } } }),
+    porc: () => ({ type:'line', data:{ labels:lbl, datasets:[
+      { label:'% real', data:s.map(x => x.porc), borderColor:G[0], backgroundColor:G[0], stepped:true, pointRadius:s.map(x => x.stock != null && x.porc != null ? 4 : 0), spanGaps:true },
+      { label:'Teórico ' + fmtP(c.PORC_TEORICO), data:CAL.map(() => c.PORC_TEORICO), borderColor:G[1], pointRadius:0, borderWidth:2 },
+      { label:'Tolerancia', data:CAL.map(() => c.PORC_TEORICO + c.TOLERANCIA), borderColor:G[2], borderDash:[4,4], pointRadius:0, borderWidth:1 },
+      { label:'', data:CAL.map(() => c.PORC_TEORICO - c.TOLERANCIA), borderColor:G[2], borderDash:[4,4], pointRadius:0, borderWidth:1 } ]},
+      options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:14, filter:i => i.text !== ''}}}, scales:{ y:{title:{display:true,text:'% de asfalto en la mezcla'}} } } }),
+  } };
+  dibujar('chCurva');
+  VISTAS.chStock = { det: i => detalleDiaHTML(i), vistas: { unica: () => ({ type:'bar', data:{ labels:lbl, datasets:[
+      { type:'line', label:'Stock medido (t)', data:s.map(x => x.stock), borderColor:G[0], backgroundColor:G[0], pointRadius:4, spanGaps:true, tension:.15, order:1 },
+      { type:'line', label:'Estimado (sin medir)', data:s.map((x, i) => x.stock != null ? x.stock : x.stockEst), borderColor:alfa(G[0], .55), borderDash:[5,4], pointRadius:0, spanGaps:true, tension:.15, order:2 },
+      { type:'line', label:'Mínimo', data:CAL.map(() => c.STOCK_MINIMO || null), borderColor:G[3], pointRadius:0, borderWidth:1.5, borderDash:[2,3], order:3 },
+      { type:'bar', label:'Recibido (t)', data:s.map(x => x.recibido || null), backgroundColor:alfa(G[2], .5), borderRadius:3, order:4 } ]},
+      options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:14}}}, scales:{ y:{beginAtZero:true, title:{display:true,text:'t de asfalto'}} } } }) } };
+  dibujar('chStock');
+  renderSalidasForm(); preview();
+}
+const stockEn = f => { const x = D.serie.find(z => z.fecha === f); return x ? x.stock : null; };
+
+// ---------- gráficos (pestañas + detalle debajo) ----------
+const IG_RESP = { 'texto-2':'#5b6274', 'texto-3':'#8a90a0', linea:'#e2dfd7', tinta:'#0f1a3d', ambar:'#d98f00', alerta:'#b8410e', cuerpo:'Barlow, system-ui, sans-serif' };
+const IG_PAL = ['#1e3a8a', '#0e8a7a', '#d98f00', '#b8410e', '#6d4ab1', '#5b6274'];
+const igc = n => (window.IG && IG.color(n)) || IG_RESP[n] || '';
+const igp = () => { const p = window.IG ? IG.paleta() : []; return IG_PAL.map((c, i) => p[i] || c); };
+const alfa = (hex, a) => { const h = String(hex).trim().replace('#', ''); if (!/^[0-9a-f]{3}([0-9a-f]{3})?$/i.test(h)) return hex; const x = h.length === 3 ? h.replace(/./g, '$&$&') : h; const n = parseInt(x, 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')'; };
+const VISTAS = {}, VISTA_SEL = { chCurva:'curva', chStock:'unica' }, DET_SEL = {};
+document.querySelectorAll('.seg').forEach(sg => sg.querySelectorAll('button').forEach(bt => bt.onclick = () => {
+  sg.querySelectorAll('button').forEach(x => x.classList.remove('on')); bt.classList.add('on');
+  VISTA_SEL[sg.dataset.ch] = bt.dataset.v; dibujar(sg.dataset.ch);
+}));
+function dibujar(id) {
+  const V = VISTAS[id]; if (!V) return;
+  const cfg = V.vistas[VISTA_SEL[id]]();
+  cfg.options.onClick = (ev, els, c) => { const p = c.getElementsAtEventForMode(ev, 'index', { intersect:false }, false); if (p.length) mostrarDet(id, p[0].index); };
+  mk(id, cfg);
+  if (DET_SEL[id] != null) mostrarDet(id, DET_SEL[id]);
+}
+const fila = (k, v) => '<div class="r"><span>' + k + '</span><span>' + v + '</span></div>';
+function mostrarDet(id, i) { DET_SEL[id] = i; const el = document.getElementById('det-' + id); el.innerHTML = '<button class="x" aria-label="Cerrar" onclick="cerrarDet(\'' + id + '\')">×</button>' + VISTAS[id].det(i); el.classList.add('on'); const c = charts[id]; if (c) { c.$sel = i; c.draw(); } }
+function cerrarDet(id) { DET_SEL[id] = null; document.getElementById('det-' + id).classList.remove('on'); const c = charts[id]; if (c) { c.$sel = null; c.draw(); } }
+function detalleDiaHTML(i) {
+  const x = D.serie[i]; if (!x) return '';
+  let h = '<b>' + fDiaL(x.fecha) + '</b>';
+  if (!x.cargado) return h + '<div class="hint0">Sin carga ese día.</div>';
+  h += fila('Mezcla que salió', fmtT(x.mezcla));
+  Object.keys(x.porDestino).forEach(d => { if (x.porDestino[d] > 0) h += fila('&nbsp;&nbsp;' + d, fmtT(x.porDestino[d])); });
+  if (x.recibido) h += fila('Asfalto recibido', fmtT(x.recibido));
+  h += fila('Asfalto en tanque', x.stock != null ? fmtT(x.stock) : 'no medido' + (x.stockEst != null ? ' (est. ' + fmtT(x.stockEst) + ')' : ''));
+  h += '<div class="sp"></div>' + fila('Consumo de asfalto', x.consumo != null ? fmtN(x.consumo,2) + ' t' + (x.tramoDias > 1 ? ' (tramo de ' + x.tramoDias + ' días)' : '') : 'pendiente de medición');
+  if (x.porc != null) h += fila('% de asfalto real', '<b class="' + (x.desvio ? 'amb' : 'pos') + '">' + fmtP(x.porc) + '</b> (teórico ' + fmtP(D.cfg.PORC_TEORICO) + ')');
+  if (x.obs) h += fila('Obs', x.obs);
+  return h;
+}
+function mk(id, cfg) {
+  if (charts[id]) charts[id].destroy();
+  Chart.defaults.font.family = igc('cuerpo'); Chart.defaults.color = igc('texto-2'); Chart.defaults.borderColor = igc('linea');
+  cfg.options = Object.assign({ responsive:true, maintainAspectRatio:false, animation:false, interaction:{ mode:'index', intersect:false }, hover:{ mode:'index', intersect:false } }, cfg.options||{});
+  cfg.options.plugins = cfg.options.plugins || {}; cfg.options.plugins.tooltip = { enabled:false };
+  cfg.plugins = [lineaGuia];
+  charts[id] = new Chart(document.getElementById(id), cfg);
+}
+const lineaGuia = { id:'lineaGuia', afterDraw(c) { if (c.$sel == null) return; const x = c.scales.x.getPixelForValue(c.$sel), ctx = c.ctx, y = c.chartArea; ctx.save(); ctx.beginPath(); ctx.moveTo(x, y.top); ctx.lineTo(x, y.bottom); ctx.lineWidth = 1; ctx.strokeStyle = alfa(igc('tinta'), .45); ctx.setLineDash([4,4]); ctx.stroke(); ctx.restore(); } };
+
+// ---------- carga ----------
+function renderSalidasForm() {
+  const el = document.getElementById('fSalidas');
+  const actuales = {}; el.querySelectorAll('input').forEach(i => actuales[i.dataset.d] = i.value);
+  el.innerHTML = D.destinos.map(d => '<div class="dest"><label>' + d + '</label><input type="number" inputmode="decimal" min="0" step="0.5" placeholder="0" data-d="' + d.replace(/"/g, '&quot;') + '" value="' + (actuales[d] || '') + '" oninput="preview()"><span class="unid">t</span></div>').join('');
+}
+['fFecha','fRec','fStock'].forEach(id => document.getElementById(id).addEventListener('input', preview));
+function leerForm() {
+  const salidas = {}; document.querySelectorAll('#fSalidas input').forEach(i => { if (i.value !== '') salidas[i.dataset.d] = Number(i.value); });
+  return { fecha: document.getElementById('fFecha').value, stock: document.getElementById('fStock').value, recibido: document.getElementById('fRec').value, salidas, obs: document.getElementById('fObs').value };
+}
+function preview() {
+  if (!D) return;
+  const f = leerForm(), c = D.cfg;
+  const mez = Object.values(f.salidas).reduce((s, t) => s + t, 0);
+  const rec = Number(f.recibido) || 0;
+  const existe = D.serie.find(x => x.fecha === f.fecha && x.cargado);
+  const prev = [...D.serie].filter(x => x.fecha < f.fecha && x.stock != null).pop();
+  let h = existe ? '<b>Ya hay carga para esta fecha (' + fmtT(existe.mezcla) + ' de mezcla' + (existe.stock != null ? ', tanque ' + fmtT(existe.stock) : '') + '). Al guardar se reemplaza.</b><br>' : '';
+  h += 'Mezcla total: <b>' + fmtT(mez) + '</b> · consumo teórico de asfalto ≈ <b>' + fmtN(mez * c.PORC_TEORICO / 100, 2) + ' t</b> (' + fmtP(c.PORC_TEORICO) + ')';
+  if (prev) {
+    const entre = D.serie.filter(x => x.fecha > prev.fecha && x.fecha < f.fecha);
+    const mezEntre = entre.reduce((s, x) => s + x.mezcla, 0) + mez, recEntre = entre.reduce((s, x) => s + x.recibido, 0) + rec;
+    const esperado = prev.stock + recEntre - mezEntre * c.PORC_TEORICO / 100;
+    h += '<br>Último stock medido: ' + fmtT(prev.stock) + ' el ' + fDiaL(prev.fecha) + ' → stock esperado hoy ≈ <b>' + fmtT(Math.max(0, esperado)) + '</b>';
+    if (f.stock !== '') {
+      const st = Number(f.stock), consumo = prev.stock + recEntre - st, porc = mezEntre > 0 ? consumo / mezEntre * 100 : null;
+      h += '<br>Con ' + fmtT(st) + ' en tanque: consumo <b>' + fmtN(consumo, 2) + ' t</b>' + (porc != null ? ' → <b class="' + (Math.abs(porc - c.PORC_TEORICO) > c.TOLERANCIA ? 'amb' : 'pos') + '">' + fmtP(porc) + '</b> de asfalto real' : '');
+      if (consumo < 0) h += '<br>⚠ El tanque tiene más que antes sin haber cargado ingreso: ¿llegó asfalto y no lo anotaste?';
+      else if (porc != null && Math.abs(porc - c.PORC_TEORICO) > c.TOLERANCIA * 3) h += '<br>⚠ El % queda muy lejos del teórico: revisá la medición del tanque o las toneladas de mezcla.';
+      if (c.CAPACIDAD_TANQUE > 0 && st > c.CAPACIDAD_TANQUE) h += '<br>⚠ Supera la capacidad del tanque (' + fmtT(c.CAPACIDAD_TANQUE) + ').';
+    }
+  }
+  document.getElementById('prev').innerHTML = h;
+}
+function guardar() {
+  const f = leerForm();
+  if (!f.fecha) return toast('Falta la fecha', 'mal');
+  if (f.fecha > D.hoy) return toast('No se puede cargar una fecha futura', 'mal');
+  const mez = Object.values(f.salidas).reduce((s, t) => s + t, 0);
+  if (f.stock === '' && mez === 0 && !(Number(f.recibido) > 0)) return toast('Cargá al menos el stock del tanque o una salida de mezcla', 'mal');
+  if (f.stock === '' && !confirm('No cargaste el stock del tanque. ¿Guardar igual? El consumo se calculará cuando se mida.')) return;
+  const b = document.getElementById('bGuardar'); b.disabled = true; b.textContent = 'Guardando…';
+  api('guardarDia', f, true).then(r => {
+    b.disabled = false; b.textContent = 'Guardar día';
+    toast(r.editado ? 'Día actualizado' : 'Día guardado', 'ok');
+    document.querySelectorAll('#fSalidas input').forEach(i => i.value = ''); document.getElementById('fRec').value = ''; document.getElementById('fStock').value = ''; document.getElementById('fObs').value = ''; document.getElementById('fFecha').value = D.hoy;
+    if (r && r.all) aplicarDatos(r.all); else cargar();
+    document.querySelector('.tabs button[data-t=panel]').click(); window.scrollTo(0,0);
+  }).catch(e => { b.disabled = false; b.textContent = 'Guardar día'; toast(e.message, 'mal'); });
+}
+function editar(fecha) {
+  const x = D.serie.find(s => s.fecha === fecha); if (!x) return;
+  document.getElementById('fFecha').value = fecha; document.getElementById('fStock').value = x.stock != null ? x.stock : ''; document.getElementById('fRec').value = x.recibido || ''; document.getElementById('fObs').value = x.obs || '';
+  document.querySelectorAll('#fSalidas input').forEach(i => i.value = x.porDestino[i.dataset.d] || '');
+  document.querySelector('.tabs button[data-t=carga]').click(); window.scrollTo(0,0); preview();
+}
+function borrar(fecha) {
+  if (!confirm('¿Borrar la carga del ' + fDiaL(fecha) + ' (stock, recibido y salidas)?')) return;
+  api('borrarDia', { fecha }, true).then(r => { toast('Día borrado', 'ok'); if (r && r.all) aplicarDatos(r.all); else cargar(); }).catch(e => toast(e.message, 'mal'));
+}
+
+// ---------- ajustes ----------
+const CFG_CAMPOS = [
+  ['PORC_TEORICO', '% de asfalto teórico de la fórmula', 'decimal'],
+  ['TOLERANCIA', 'Tolerancia en puntos de % antes de avisar', 'decimal'],
+  ['STOCK_MINIMO', 'Stock mínimo de asfalto en tanque (t)', 'decimal'],
+  ['CAPACIDAD_TANQUE', 'Capacidad del tanque (t)', 'decimal'],
+  ['DESTINOS', 'Destinos de la mezcla (separados por coma)', 'text'],
+  ['DESTINO_AUTOVIAS', 'Destino que lee la app de Obra Autovías', 'text'],
+  ['PIN', 'PIN de la app', 'text'],
+];
+function dirty() { let d = false; document.querySelectorAll('#cfgForm input').forEach(i => { if (String(i.value).trim() !== String(CFG[i.dataset.k] == null ? '' : CFG[i.dataset.k]).trim()) d = true; }); document.getElementById('savebar').classList.toggle('on', d); }
+function descartarConfig() { CFG = null; cargarConfig(); }
+function cargarConfig() {
+  api('config').then(c => {
+    CFG = {}; c.config.forEach(r => CFG[r.clave] = r.valor);
+    document.getElementById('cfgForm').innerHTML = CFG_CAMPOS.map(([k, label, mode]) => '<label>' + label + '</label><input data-k="' + k + '" type="' + (mode === 'text' ? 'text' : 'number') + '" ' + (mode === 'text' ? '' : 'inputmode="decimal" step="any" min="0"') + ' value="' + String(CFG[k] == null ? '' : CFG[k]).replace(/"/g, '&quot;') + '" oninput="dirty()">').join('');
+    document.getElementById('savebar').classList.remove('on');
+  }).catch(e => toast('No se pudo leer la configuración: ' + e.message, 'mal'));
+}
+function guardarConfig() {
+  const config = {};
+  document.querySelectorAll('#cfgForm input').forEach(i => { if (String(i.value).trim() !== String(CFG[i.dataset.k] == null ? '' : CFG[i.dataset.k]).trim()) config[i.dataset.k] = i.value; });
+  if (config.PIN !== undefined && !confirm('¿Cambiar el PIN de acceso? Todos van a tener que volver a entrar con el nuevo.')) return;
+  const b = document.getElementById('bCfg'); b.disabled = true; b.textContent = 'Guardando…';
+  api('guardarConfig', { config }, true).then(r => {
+    CFG = null; toast('Ajustes guardados', 'ok');
+    if (config.PIN !== undefined && CRED && CRED.pin) { CRED.pin = String(config.PIN).trim(); localStorage.setItem('asfalto_cred', JSON.stringify(CRED)); }
+    cargarConfig(); if (r && r.all) aplicarDatos(r.all); else cargar();
+  }).catch(e => toast(e.message, 'mal')).finally(() => { b.disabled = false; b.textContent = 'Guardar'; });
+}
+
+// guard.js canjea el ticket de la app INGECO de forma asíncrona: le damos un momento antes de decidir si pedir PIN.
+if (window.INGECO_SESION || credenciales()) cargar(); else setTimeout(cargar, 700);
+setInterval(() => { if (D) cargar(); }, 5*60*1000);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
