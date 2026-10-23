@@ -23,7 +23,7 @@ function doGet(e) {
   const p = (e && e.parameter) || {};
   // Setup remoto de una sola vez (clasp run no anda sin proyecto GCP): ?accion=setup&k=<SETUP_KEY de Script Properties>
   if (p.accion === 'setup') {
-    const k = PropertiesService.getScriptProperties().getProperty('SETUP_KEY') || '6b22a2476513778731c6e57c'; // TEMPORAL-SETUP
+    const k = PropertiesService.getScriptProperties().getProperty('SETUP_KEY');
     if (!k || p.k !== k) return ContentService.createTextOutput('no');
     setup();
     return ContentService.createTextOutput('setup-ok');
