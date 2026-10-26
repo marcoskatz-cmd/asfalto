@@ -232,12 +232,13 @@ function render() {
 
   // KPIs
   const ult = [...s].reverse().find(x => x.mezcla > 0);
-  const stockClase = k.stock == null ? '' : (k.stock < c.STOCK_MINIMO ? 'mal' : (k.stock < c.STOCK_MINIMO * 1.5 ? 'warn' : 'ok'));
+  const stockClase = k.stock == null || c.STOCK_MINIMO == null ? '' : (k.stock < c.STOCK_MINIMO ? 'mal' : (k.stock < c.STOCK_MINIMO * 1.5 ? 'warn' : 'ok'));
   const lleno = k.stock != null && c.CAPACIDAD_TANQUE > 0 ? Math.min(100, k.stock / c.CAPACIDAD_TANQUE * 100) : null;
-  const porcClase = v => v == null ? '' : (Math.abs(v - c.PORC_TEORICO) > c.TOLERANCIA ? 'warn' : 'ok');
+  const porcClase = v => v == null || c.PORC_TEORICO == null ? '' : (Math.abs(v - c.PORC_TEORICO) > c.TOLERANCIA ? 'warn' : 'ok');
+  const teo = c.PORC_TEORICO != null;
   const kp = [
     ['Asfalto en tanque', fmtT(k.stock), (k.stockFecha ? 'medido el ' + fDiaL(k.stockFecha) : 'sin mediciones') + (k.autonomia != null ? ' · alcanza ≈ <b>' + fmtN(k.autonomia,0) + ' días</b> al ritmo actual' : '') + (lleno != null ? '<div class="tanque"><i style="width:' + lleno + '%"></i></div>' : ''), stockClase, 'big'],
-    ['% asfalto último tramo', fmtP(k.ultimoTramo ? k.ultimoTramo.porc : null), k.ultimoTramo ? fDia(k.ultimoTramo.desde) + ' → ' + fDia(k.ultimoTramo.hasta) + ' · teórico ' + fmtP(c.PORC_TEORICO) : 'falta una segunda medición', porcClase(k.ultimoTramo ? k.ultimoTramo.porc : null)],
+    ['% asfalto último tramo', fmtP(k.ultimoTramo ? k.ultimoTramo.porc : null), k.ultimoTramo ? fDia(k.ultimoTramo.desde) + ' → ' + fDia(k.ultimoTramo.hasta) + (teo ? ' · teórico ' + fmtP(c.PORC_TEORICO) : '') : 'falta una segunda medición', porcClase(k.ultimoTramo ? k.ultimoTramo.porc : null)],
     ['% asfalto promedio', fmtP(k.porcAcum), fmtT(k.consumoTotal) + ' sobre ' + fmtT(k.mezclaConConsumo != null ? k.mezclaConConsumo : null) + ' de mezcla', porcClase(k.porcAcum)],
     ['Mezcla último día', ult ? fmtT(ult.mezcla) : '—', ult ? fDiaL(ult.fecha) + ' · ' + Object.keys(ult.porDestino).filter(d => ult.porDestino[d] > 0).map(d => d + ' ' + fmtN(ult.porDestino[d],1)).join(' · ') : 'sin salidas', ''],
     ['Consumo asfalto último día', ult && ult.consumo != null ? fmtT(ult.consumo) : '—', ult ? (ult.consumo != null ? (ult.tramoDias > 1 ? 'repartido en tramo de ' + ult.tramoDias + ' días' : 'medido ese día') : 'pendiente de medir el tanque') : '', ''],
@@ -255,7 +256,7 @@ function render() {
   document.getElementById('tDias').innerHTML = '<tr><th>Fecha</th><th class="n">Mezcla</th><th>Destinos</th><th class="n">Recibido</th><th class="n">Tanque</th><th class="n">Consumo</th><th class="n">% real</th><th>Obs</th><th></th></tr>' +
     [...s].filter(x => x.cargado).reverse().map(x => '<tr><td>' + fDiaL(x.fecha) + '</td><td class="n">' + fmtN(x.mezcla,1) + '</td><td class="small">' + Object.keys(x.porDestino).filter(d => x.porDestino[d] > 0).map(d => d + ' ' + fmtN(x.porDestino[d],1)).join(' · ') + '</td><td class="n">' + (x.recibido ? fmtN(x.recibido,1) : '') + '</td><td class="n">' + (x.stock != null ? fmtN(x.stock,1) : '<span class="small">—</span>') + '</td><td class="n">' + (x.consumo != null ? fmtN(x.consumo,2) + (x.tramoDias > 1 ? '<span class="tag est">' + x.tramoDias + ' d</span>' : '') : '') + '</td><td class="n ' + (x.porc == null ? '' : x.desvio ? 'amb' : 'pos') + '">' + (x.porc != null ? fmtN(x.porc,2) + '%' : '') + '</td><td class="small">' + (x.obs || '') + '</td><td><button class="editar" onclick="editar(\'' + x.fecha + '\')">editar</button> <button class="editar rojo" onclick="borrar(\'' + x.fecha + '\')">borrar</button></td></tr>').join('');
   document.getElementById('tTramos').innerHTML = D.tramos.length ? '<tr><th>Desde</th><th>Hasta</th><th class="n">Días</th><th class="n">Stock ini</th><th class="n">Recibido</th><th class="n">Stock fin</th><th class="n">Consumo</th><th class="n">Mezcla</th><th class="n">% real</th></tr>' +
-    [...D.tramos].reverse().map(t => '<tr><td>' + fDiaL(t.desde) + '</td><td>' + fDiaL(t.hasta) + '</td><td class="n">' + t.dias + '</td><td class="n">' + fmtN(stockEn(t.desde),1) + '</td><td class="n">' + fmtN(t.recibido,1) + '</td><td class="n">' + fmtN(stockEn(t.hasta),1) + '</td><td class="n ' + (t.raro ? 'neg' : '') + '">' + fmtN(t.consumo,2) + '</td><td class="n">' + fmtN(t.mezcla,1) + '</td><td class="n ' + (t.porc == null ? '' : Math.abs(t.porc - c.PORC_TEORICO) > c.TOLERANCIA ? 'amb' : 'pos') + '">' + (t.porc != null ? fmtN(t.porc,2) + '%' : '—') + '</td></tr>').join('') : '<tr><td class="small">Todavía no hay dos mediciones del tanque.</td></tr>';
+    [...D.tramos].reverse().map(t => '<tr><td>' + fDiaL(t.desde) + '</td><td>' + fDiaL(t.hasta) + '</td><td class="n">' + t.dias + '</td><td class="n">' + fmtN(stockEn(t.desde),1) + '</td><td class="n">' + fmtN(t.recibido,1) + '</td><td class="n">' + fmtN(stockEn(t.hasta),1) + '</td><td class="n ' + (t.raro ? 'neg' : '') + '">' + fmtN(t.consumo,2) + '</td><td class="n">' + fmtN(t.mezcla,1) + '</td><td class="n ' + (t.porc == null || !teo ? '' : Math.abs(t.porc - c.PORC_TEORICO) > c.TOLERANCIA ? 'amb' : 'pos') + '">' + (t.porc != null ? fmtN(t.porc,2) + '%' : '—') + '</td></tr>').join('') : '<tr><td class="small">Todavía no hay dos mediciones del tanque.</td></tr>';
 
   // gráficos
   const CAL = s.map(x => x.fecha); window.CAL = CAL;
@@ -268,16 +269,16 @@ function render() {
       options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:14}}}, scales:{ y:{beginAtZero:true, title:{display:true,text:'t asfalto'}}, yM:{position:'right', beginAtZero:true, grid:{drawOnChartArea:false}, title:{display:true,text:'t mezcla'}} } } }),
     porc: () => ({ type:'line', data:{ labels:lbl, datasets:[
       { label:'% real', data:s.map(x => x.porc), borderColor:G[0], backgroundColor:G[0], stepped:true, pointRadius:s.map(x => x.stock != null && x.porc != null ? 4 : 0), spanGaps:true },
-      { label:'Teórico ' + fmtP(c.PORC_TEORICO), data:CAL.map(() => c.PORC_TEORICO), borderColor:G[1], pointRadius:0, borderWidth:2 },
+      ].concat(teo ? [{ label:'Teórico ' + fmtP(c.PORC_TEORICO), data:CAL.map(() => c.PORC_TEORICO), borderColor:G[1], pointRadius:0, borderWidth:2 },
       { label:'Tolerancia', data:CAL.map(() => c.PORC_TEORICO + c.TOLERANCIA), borderColor:G[2], borderDash:[4,4], pointRadius:0, borderWidth:1 },
-      { label:'', data:CAL.map(() => c.PORC_TEORICO - c.TOLERANCIA), borderColor:G[2], borderDash:[4,4], pointRadius:0, borderWidth:1 } ]},
+      { label:'', data:CAL.map(() => c.PORC_TEORICO - c.TOLERANCIA), borderColor:G[2], borderDash:[4,4], pointRadius:0, borderWidth:1 }] : [])},
       options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:14, filter:i => i.text !== ''}}}, scales:{ y:{title:{display:true,text:'% de asfalto en la mezcla'}} } } }),
   } };
   dibujar('chCurva');
   VISTAS.chStock = { det: i => detalleDiaHTML(i), vistas: { unica: () => ({ type:'bar', data:{ labels:lbl, datasets:[
       { type:'line', label:'Stock medido (t)', data:s.map(x => x.stock), borderColor:G[0], backgroundColor:G[0], pointRadius:4, spanGaps:true, tension:.15, order:1 },
       { type:'line', label:'Estimado (sin medir)', data:s.map((x, i) => x.stock != null ? x.stock : x.stockEst), borderColor:alfa(G[0], .55), borderDash:[5,4], pointRadius:0, spanGaps:true, tension:.15, order:2 },
-      { type:'line', label:'Mínimo', data:CAL.map(() => c.STOCK_MINIMO || null), borderColor:G[3], pointRadius:0, borderWidth:1.5, borderDash:[2,3], order:3 },
+      { type:'line', label:'Mínimo', data:CAL.map(() => c.STOCK_MINIMO != null && c.STOCK_MINIMO > 0 ? c.STOCK_MINIMO : null), borderColor:G[3], pointRadius:0, borderWidth:1.5, borderDash:[2,3], order:3 },
       { type:'bar', label:'Recibido (t)', data:s.map(x => x.recibido || null), backgroundColor:alfa(G[2], .5), borderRadius:3, order:4 } ]},
       options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:14}}}, scales:{ y:{beginAtZero:true, title:{display:true,text:'t de asfalto'}} } } }) } };
   dibujar('chStock');
@@ -315,7 +316,7 @@ function detalleDiaHTML(i) {
   if (x.recibido) h += fila('Asfalto recibido', fmtT(x.recibido));
   h += fila('Asfalto en tanque', x.stock != null ? fmtT(x.stock) : 'no medido' + (x.stockEst != null ? ' (est. ' + fmtT(x.stockEst) + ')' : ''));
   h += '<div class="sp"></div>' + fila('Consumo de asfalto', x.consumo != null ? fmtN(x.consumo,2) + ' t' + (x.tramoDias > 1 ? ' (tramo de ' + x.tramoDias + ' días)' : '') : 'pendiente de medición');
-  if (x.porc != null) h += fila('% de asfalto real', '<b class="' + (x.desvio ? 'amb' : 'pos') + '">' + fmtP(x.porc) + '</b> (teórico ' + fmtP(D.cfg.PORC_TEORICO) + ')');
+  if (x.porc != null) h += fila('% de asfalto real', '<b class="' + (x.desvio ? 'amb' : (D.cfg.PORC_TEORICO != null ? 'pos' : '')) + '">' + fmtP(x.porc) + '</b>' + (D.cfg.PORC_TEORICO != null ? ' (teórico ' + fmtP(D.cfg.PORC_TEORICO) + ')' : ''));
   if (x.obs) h += fila('Obs', x.obs);
   return h;
 }
@@ -348,18 +349,19 @@ function preview() {
   const existe = D.serie.find(x => x.fecha === f.fecha && x.cargado);
   const prev = [...D.serie].filter(x => x.fecha < f.fecha && x.stock != null).pop();
   let h = existe ? '<b>Ya hay carga para esta fecha (' + fmtT(existe.mezcla) + ' de mezcla' + (existe.stock != null ? ', tanque ' + fmtT(existe.stock) : '') + '). Al guardar se reemplaza.</b><br>' : '';
-  h += 'Mezcla total: <b>' + fmtT(mez) + '</b> · consumo teórico de asfalto ≈ <b>' + fmtN(mez * c.PORC_TEORICO / 100, 2) + ' t</b> (' + fmtP(c.PORC_TEORICO) + ')';
+  const teo = c.PORC_TEORICO != null;
+  h += 'Mezcla total: <b>' + fmtT(mez) + '</b>' + (teo ? ' · consumo teórico de asfalto ≈ <b>' + fmtN(mez * c.PORC_TEORICO / 100, 2) + ' t</b> (' + fmtP(c.PORC_TEORICO) + ')' : '');
   if (prev) {
     const entre = D.serie.filter(x => x.fecha > prev.fecha && x.fecha < f.fecha);
     const mezEntre = entre.reduce((s, x) => s + x.mezcla, 0) + mez, recEntre = entre.reduce((s, x) => s + x.recibido, 0) + rec;
-    const esperado = prev.stock + recEntre - mezEntre * c.PORC_TEORICO / 100;
-    h += '<br>Último stock medido: ' + fmtT(prev.stock) + ' el ' + fDiaL(prev.fecha) + ' → stock esperado hoy ≈ <b>' + fmtT(Math.max(0, esperado)) + '</b>';
+    h += '<br>Último stock medido: ' + fmtT(prev.stock) + ' el ' + fDiaL(prev.fecha);
+    if (teo) h += ' → stock esperado hoy ≈ <b>' + fmtT(Math.max(0, prev.stock + recEntre - mezEntre * c.PORC_TEORICO / 100)) + '</b>';
     if (f.stock !== '') {
       const st = Number(f.stock), consumo = prev.stock + recEntre - st, porc = mezEntre > 0 ? consumo / mezEntre * 100 : null;
-      h += '<br>Con ' + fmtT(st) + ' en tanque: consumo <b>' + fmtN(consumo, 2) + ' t</b>' + (porc != null ? ' → <b class="' + (Math.abs(porc - c.PORC_TEORICO) > c.TOLERANCIA ? 'amb' : 'pos') + '">' + fmtP(porc) + '</b> de asfalto real' : '');
+      h += '<br>Con ' + fmtT(st) + ' en tanque: consumo <b>' + fmtN(consumo, 2) + ' t</b>' + (porc != null ? ' → <b class="' + (teo ? (Math.abs(porc - c.PORC_TEORICO) > c.TOLERANCIA ? 'amb' : 'pos') : '') + '">' + fmtP(porc) + '</b> de asfalto real' : '');
       if (consumo < 0) h += '<br>⚠ El tanque tiene más que antes sin haber cargado ingreso: ¿llegó asfalto y no lo anotaste?';
-      else if (porc != null && Math.abs(porc - c.PORC_TEORICO) > c.TOLERANCIA * 3) h += '<br>⚠ El % queda muy lejos del teórico: revisá la medición del tanque o las toneladas de mezcla.';
-      if (c.CAPACIDAD_TANQUE > 0 && st > c.CAPACIDAD_TANQUE) h += '<br>⚠ Supera la capacidad del tanque (' + fmtT(c.CAPACIDAD_TANQUE) + ').';
+      else if (teo && porc != null && Math.abs(porc - c.PORC_TEORICO) > c.TOLERANCIA * 3) h += '<br>⚠ El % queda muy lejos del teórico: revisá la medición del tanque o las toneladas de mezcla.';
+      if (c.CAPACIDAD_TANQUE != null && c.CAPACIDAD_TANQUE > 0 && st > c.CAPACIDAD_TANQUE) h += '<br>⚠ Supera la capacidad del tanque (' + fmtT(c.CAPACIDAD_TANQUE) + ').';
     }
   }
   document.getElementById('prev').innerHTML = h;

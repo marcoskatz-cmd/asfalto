@@ -164,6 +164,7 @@ function guardarConfig(p, user) {
     let v = cfg[k];
     if (k === 'PIN') { v = String(v).trim(); if (!/^\d{4,8}$/.test(v)) throw new Error('El PIN debe tener entre 4 y 8 números'); }
     else if (k === 'DESTINOS' || k === 'DESTINO_AUTOVIAS') { v = String(v).trim(); if (!v) throw new Error('Falta ' + k); }
+    else if (String(v).trim() === '') { v = ''; }   // en blanco = sin definir (sin avisos ni comparaciones)
     else { v = Number(String(v).replace(',', '.')); if (isNaN(v) || v < 0) throw new Error('Valor inválido en ' + k); }
     const i = claves.indexOf(k);
     if (i >= 0) sh.getRange(i + 2, 2).setValue(v);
@@ -222,8 +223,9 @@ function getDatos(user) {
   const destinos = destinos_(cfg);
   const diario = leerDiario_();
   const salidas = leerSalidas_();
-  const porcTeo = Number(cfg.PORC_TEORICO) || 0, tol = Number(cfg.TOLERANCIA) || 0;
-  const stockMin = Number(cfg.STOCK_MINIMO) || 0, capacidad = Number(cfg.CAPACIDAD_TANQUE) || 0;
+  // Parámetros en blanco = sin definir: no se compara ni se estima nada con ellos.
+  const porcTeo = aNumero_(cfg.PORC_TEORICO), tol = aNumero_(cfg.TOLERANCIA) || 0;
+  const stockMin = aNumero_(cfg.STOCK_MINIMO), capacidad = aNumero_(cfg.CAPACIDAD_TANQUE);
   const hoy = hoy_();
 
   const fechas = Object.keys(diario).concat(salidas.map(s => s.fecha)).sort();
@@ -270,7 +272,7 @@ function getDatos(user) {
     const d = diario[f] || { stock: null, recibido: 0, obs: '', por: '' };
     const m = mezcla[f] || { total: 0, por: {} };
     const medido = d.stock !== null;
-    if (stockEst !== null) stockEst = stockEst + d.recibido - m.total * porcTeo / 100;
+    if (stockEst !== null) stockEst = porcTeo === null ? null : stockEst + d.recibido - m.total * porcTeo / 100;
     if (medido) { ultimoStock = d.stock; ultimoStockFecha = f; stockEst = d.stock; }
     const consumo = consumoDia[f] !== undefined ? consumoDia[f] : null;
     const tr = tramoDe[f] || null;
@@ -283,7 +285,7 @@ function getDatos(user) {
       stock: medido ? d.stock : null, stockEst: medido ? null : (stockEst !== null ? Math.max(0, stockEst) : null),
       consumo, porc, tramoDias: tr ? tr.dias : null, tramoRaro: tr ? tr.raro : false,
       cargado: !!diario[f] || m.total > 0,
-      desvio: porc !== null ? (Math.abs(porc - porcTeo) > tol) : false,
+      desvio: porc !== null && porcTeo !== null ? (Math.abs(porc - porcTeo) > tol) : false,
     };
   });
 
@@ -296,8 +298,8 @@ function getDatos(user) {
   const diasSinMedir = ultimoStockFecha ? Math.round((new Date(hoy + 'T12:00:00') - new Date(ultimoStockFecha + 'T12:00:00')) / 86400000) : null;
 
   const avisos = [];
-  if (ultimoStock !== null && stockMin > 0 && ultimoStock < stockMin) avisos.push({ tipo: 'mal', msg: 'Stock de asfalto bajo: ' + fmtT_(ultimoStock) + ' t en tanque (mínimo ' + fmtT_(stockMin) + ' t).' });
-  if (ultimoTramo && ultimoTramo.porc !== null && Math.abs(ultimoTramo.porc - porcTeo) > tol) avisos.push({ tipo: 'warn', msg: 'Último % de asfalto ' + fmtP_(ultimoTramo.porc) + ' (teórico ' + fmtP_(porcTeo) + '): revisar la dosificación o la medición del tanque.' });
+  if (ultimoStock !== null && stockMin !== null && stockMin > 0 && ultimoStock < stockMin) avisos.push({ tipo: 'mal', msg: 'Stock de asfalto bajo: ' + fmtT_(ultimoStock) + ' t en tanque (mínimo ' + fmtT_(stockMin) + ' t).' });
+  if (ultimoTramo && ultimoTramo.porc !== null && porcTeo !== null && Math.abs(ultimoTramo.porc - porcTeo) > tol) avisos.push({ tipo: 'warn', msg: 'Último % de asfalto ' + fmtP_(ultimoTramo.porc) + ' (teórico ' + fmtP_(porcTeo) + '): revisar la dosificación o la medición del tanque.' });
   if (ultimoTramo && ultimoTramo.raro) avisos.push({ tipo: 'warn', msg: 'El último tramo da un consumo raro (' + fmtT_(ultimoTramo.consumo) + ' t con ' + fmtT_(ultimoTramo.mezcla) + ' t de mezcla): ¿faltó cargar un ingreso de asfalto o una salida?' });
   if (diasSinMedir !== null && diasSinMedir >= 2) avisos.push({ tipo: 'warn', msg: 'Hace ' + diasSinMedir + ' días que no se carga el stock del tanque (último: ' + fmtFechaAR_(ultimoStockFecha) + ').' });
 
@@ -326,7 +328,7 @@ function guardarDia(p, user) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new Error('Fecha inválida');
   if (fecha > hoy_()) throw new Error('No se puede cargar una fecha futura');
   const cfg = leerConfig_();
-  const capacidad = Number(cfg.CAPACIDAD_TANQUE) || 0;
+  const capacidad = aNumero_(cfg.CAPACIDAD_TANQUE) || 0;
   const stock = aNumero_(p.stock);
   if (stock !== null && (stock < 0 || stock > 10000)) throw new Error('Stock fuera de rango');
   if (stock !== null && capacidad > 0 && stock > capacidad * 1.05) throw new Error('El stock (' + stock + ' t) supera la capacidad del tanque (' + capacidad + ' t)');
@@ -396,7 +398,7 @@ function avisarCierre_(fecha, user) {
   const titulo = 'Planta ' + fmtFechaAR_(fecha) + ': ' + fmtT_(d.mezcla) + ' t de mezcla · ' + stockTxt;
   const lineas = [
     'MEZCLA: ' + fmtT_(d.mezcla) + ' t' + (destinos ? ' (' + destinos + ')' : ''),
-    'ASFALTO: ' + (d.consumo !== null ? 'consumo ' + fmtT_(d.consumo) + ' t' + (d.tramoDias > 1 ? ' (tramo de ' + d.tramoDias + ' días)' : '') + ' → ' + fmtP_(d.porc) + ' real vs ' + fmtP_(datos.cfg.PORC_TEORICO) + ' teórico' : 'consumo pendiente hasta la próxima medición del tanque') + (d.recibido ? ' · recibido ' + fmtT_(d.recibido) + ' t' : ''),
+    'ASFALTO: ' + (d.consumo !== null ? 'consumo ' + fmtT_(d.consumo) + ' t' + (d.tramoDias > 1 ? ' (tramo de ' + d.tramoDias + ' días)' : '') + ' → ' + fmtP_(d.porc) + (datos.cfg.PORC_TEORICO !== null ? ' real vs ' + fmtP_(datos.cfg.PORC_TEORICO) + ' teórico' : ' real') : 'consumo pendiente hasta la próxima medición del tanque') + (d.recibido ? ' · recibido ' + fmtT_(d.recibido) + ' t' : ''),
     'TANQUE: ' + (d.stock !== null ? fmtT_(d.stock) + ' t' + (k.autonomia !== null ? ' ≈ ' + fmtT_(k.autonomia) + ' días al ritmo actual' : '') : 'no se midió'),
   ];
   datos.avisos.forEach(a => lineas.push('⚠ ' + a.msg));
