@@ -299,7 +299,7 @@ function getDatos(user) {
   if (ultimoStock !== null && stockMin > 0 && ultimoStock < stockMin) avisos.push({ tipo: 'mal', msg: 'Stock de asfalto bajo: ' + fmtT_(ultimoStock) + ' t en tanque (mínimo ' + fmtT_(stockMin) + ' t).' });
   if (ultimoTramo && ultimoTramo.porc !== null && Math.abs(ultimoTramo.porc - porcTeo) > tol) avisos.push({ tipo: 'warn', msg: 'Último % de asfalto ' + fmtP_(ultimoTramo.porc) + ' (teórico ' + fmtP_(porcTeo) + '): revisar la dosificación o la medición del tanque.' });
   if (ultimoTramo && ultimoTramo.raro) avisos.push({ tipo: 'warn', msg: 'El último tramo da un consumo raro (' + fmtT_(ultimoTramo.consumo) + ' t con ' + fmtT_(ultimoTramo.mezcla) + ' t de mezcla): ¿faltó cargar un ingreso de asfalto o una salida?' });
-  if (diasSinMedir !== null && diasSinMedir >= 2) avisos.push({ tipo: 'warn', msg: 'Hace ' + diasSinMedir + ' días que no se carga el stock del tanque (último: ' + ultimoStockFecha + ').' });
+  if (diasSinMedir !== null && diasSinMedir >= 2) avisos.push({ tipo: 'warn', msg: 'Hace ' + diasSinMedir + ' días que no se carga el stock del tanque (último: ' + fmtFechaAR_(ultimoStockFecha) + ').' });
 
   return {
     user, hoy, inicio, destinos,
