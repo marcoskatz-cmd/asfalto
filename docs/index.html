@@ -111,6 +111,7 @@ dl{font-size:13px}dt{font-weight:600;margin-top:10px;color:var(--tinta)}dd{margi
 
 <!-- ============ PANEL ============ -->
 <section id="panel" class="sec on">
+  <div id="pendientes"></div>
   <div id="avisos"></div>
   <div class="kpis" id="kpis"><div class="loading">Cargando…</div></div>
   <div class="card"><h3>Consumo de asfalto y salida de mezcla</h3>
@@ -185,11 +186,16 @@ function credenciales() {
   try { const c = JSON.parse(localStorage.getItem('asfalto_cred') || 'null'); if (c && c.pin) return c; } catch (e) {}
   return null;
 }
-async function api(accion, payload, conAll) {
+async function api(accion, payload, conAll, timeoutMs) {
   const cred = CRED || credenciales();
   if (!cred) throw new Error('Sin credenciales');
-  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ accion, payload: payload || {} }, conAll ? { con_all: 1 } : {}, cred)) });
-  const j = await r.json();
+  const ctrl = timeoutMs ? new AbortController() : null, tm = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  let j;
+  try {
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ accion, payload: payload || {} }, conAll ? { con_all: 1 } : {}, cred)), signal: ctrl ? ctrl.signal : undefined });
+    j = await r.json();
+  } catch (e) { const err = new Error('Sin conexión'); err.red = true; throw err; }   // red caída, timeout o respuesta cortada
+  finally { if (tm) clearTimeout(tm); }
   if (!j.ok) { if (/PIN incorrecto|Sin permiso/.test(j.error || '')) { localStorage.removeItem('asfalto_cred'); CRED = null; mostrarLogin(); } throw new Error(j.error || 'Error'); }
   return j.data;
 }
@@ -223,6 +229,7 @@ function aplicarDatos(d) { if (!d) return; D = d; render(); try { localStorage.s
 function cargar() {
   if (!(CRED || credenciales())) return mostrarLogin();
   if (!D) { try { const c = JSON.parse(localStorage.getItem(CACHE_D) || 'null'); if (c) { D = c; render(); } } catch (e) { D = null; } }
+  renderPendientes(); enviarPendientes(false);
   api('datos').then(aplicarDatos).catch(e => toast('Error al cargar: ' + e.message, 'mal'));
 }
 
@@ -231,6 +238,7 @@ function render() {
   document.getElementById('who').textContent = D.user === 'PIN' ? 'Planta asfáltica' : D.user;
   document.getElementById('upd').textContent = 'act. ' + new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
   if (!document.getElementById('fFecha').value) document.getElementById('fFecha').value = D.hoy;
+  renderPendientes();
   document.getElementById('avisos').innerHTML = D.avisos.map(a => '<div class="aviso ' + a.tipo + '">' + (a.tipo === 'mal' ? '⛔ ' : '⚠ ') + a.msg + '</div>').join('');
 
   // KPIs
@@ -379,15 +387,67 @@ function guardar() {
   const mez = Object.values(f.salidas).reduce((s, t) => s + t, 0);
   if (f.stock === '' && mez === 0 && !(Number(f.recibido) > 0)) return toast('Cargá al menos el stock del tanque o una salida de mezcla', 'mal');
   if (f.stock === '' && !confirm('No cargaste el stock del tanque. ¿Guardar igual? El consumo se calculará cuando se mida.')) return;
-  const b = document.getElementById('bGuardar'); b.disabled = true; b.textContent = 'Guardando…';
-  api('guardarDia', f, true).then(r => {
-    b.disabled = false; b.textContent = 'Guardar día';
-    toast(r.editado ? 'Día actualizado' : 'Día guardado', 'ok');
-    document.querySelectorAll('#fSalidas input').forEach(i => i.value = ''); document.getElementById('fRec').value = ''; document.getElementById('fStock').value = ''; document.getElementById('fArr').value = ''; document.getElementById('fObs').value = ''; document.getElementById('fFecha').value = D.hoy;
-    if (r && r.all) aplicarDatos(r.all); else cargar();
-    document.querySelector('.tabs button[data-t=panel]').click(); window.scrollTo(0,0);
-  }).catch(e => { b.disabled = false; b.textContent = 'Guardar día'; toast(e.message, 'mal'); });
+  // Primero queda guardado en el teléfono; después se envía (y se reintenta solo si falla la conexión)
+  const cola = leerCola(); cola[f.fecha] = Object.assign({}, f, { guardadoEn: Date.now() }); escribirCola(cola);
+  limpiarForm();
+  document.querySelector('.tabs button[data-t=panel]').click(); window.scrollTo(0,0);
+  toast('Guardado en el teléfono, enviando…', 'ok');
+  enviarPendientes(true);
 }
+function limpiarForm() {
+  document.querySelectorAll('#fSalidas input').forEach(i => i.value = ''); document.getElementById('fRec').value = ''; document.getElementById('fStock').value = ''; document.getElementById('fArr').value = ''; document.getElementById('fObs').value = ''; document.getElementById('fFecha').value = D.hoy;
+}
+
+// ---------- cola de cargas pendientes (sin conexión) ----------
+const COLA = 'asfalto_pendientes';
+function leerCola() { try { return JSON.parse(localStorage.getItem(COLA) || '{}') || {}; } catch (e) { return {}; } }
+function escribirCola(c) { try { localStorage.setItem(COLA, JSON.stringify(c)); } catch (e) {} renderPendientes(); }
+let ENVIANDO = false;
+async function enviarPendientes(avisar) {
+  if (ENVIANDO || !(CRED || credenciales())) return;
+  const fechas = Object.keys(leerCola()).sort();
+  if (!fechas.length) return;
+  ENVIANDO = true; renderPendientes();
+  let enviados = 0, ultimo = null;
+  try {
+    for (const fecha of fechas) {
+      const item = leerCola()[fecha]; if (!item) continue;
+      const { guardadoEn, error, ...payload } = item;
+      try {
+        ultimo = await api('guardarDia', payload, true, 45000);
+        const c = leerCola(); if (c[fecha] && c[fecha].guardadoEn === guardadoEn) delete c[fecha]; escribirCola(c);
+        enviados++;
+      } catch (e) {
+        if (e.red) { if (avisar) toast('Sin conexión: la carga quedó guardada en el teléfono y se envía sola', 'mal'); break; }
+        // El servidor la rechazó (dato inválido): queda marcada para corregir
+        const c = leerCola(); if (c[fecha]) { c[fecha].error = e.message; escribirCola(c); }
+        if (avisar) toast('No se pudo guardar el ' + fDiaL(fecha) + ': ' + e.message, 'mal');
+      }
+    }
+  } finally { ENVIANDO = false; renderPendientes(); }
+  if (enviados) { toast(enviados === 1 ? 'Día enviado' : enviados + ' días enviados', 'ok'); if (ultimo && ultimo.all) aplicarDatos(ultimo.all); else cargar(); }
+}
+function renderPendientes() {
+  const el = document.getElementById('pendientes'); if (!el) return;
+  const c = leerCola(), fechas = Object.keys(c).sort();
+  el.innerHTML = fechas.map(f => c[f].error
+    ? '<div class="aviso mal">⛔ La carga del ' + fDiaL(f) + ' no se guardó: ' + c[f].error + ' <button class="editar" onclick="corregirPendiente(&quot;' + f + '&quot;)">corregir</button> <button class="editar rojo" onclick="descartarPendiente(&quot;' + f + '&quot;)">descartar</button></div>'
+    : '<div class="aviso warn">⏳ Carga del ' + fDiaL(f) + ' guardada en el teléfono, ' + (ENVIANDO ? 'enviando…' : 'pendiente de enviar.') + (ENVIANDO ? '' : ' <button class="editar" onclick="enviarPendientes(true)">reintentar</button>') + '</div>').join('');
+}
+function corregirPendiente(fecha) {
+  const x = leerCola()[fecha]; if (!x) return;
+  document.getElementById('fFecha').value = fecha; document.getElementById('fStock').value = x.stock; document.getElementById('fRec').value = x.recibido; document.getElementById('fArr').value = x.arranques || ''; document.getElementById('fObs').value = x.obs || '';
+  document.querySelectorAll('#fSalidas input').forEach(i => i.value = x.salidas[i.dataset.d] != null ? x.salidas[i.dataset.d] : '');
+  const c = leerCola(); delete c[fecha]; escribirCola(c);
+  document.querySelector('.tabs button[data-t=carga]').click(); window.scrollTo(0,0); preview();
+}
+function descartarPendiente(fecha) {
+  if (!confirm('¿Descartar la carga del ' + fDiaL(fecha) + ' que no se pudo guardar?')) return;
+  const c = leerCola(); delete c[fecha]; escribirCola(c);
+}
+window.addEventListener('online', () => enviarPendientes(true));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) enviarPendientes(false); });
+setInterval(() => { const c = leerCola(); if (Object.keys(c).some(f => !c[f].error)) enviarPendientes(false); }, 60*1000);
 function editar(fecha) {
   const x = D.serie.find(s => s.fecha === fecha); if (!x) return;
   document.getElementById('fFecha').value = fecha; document.getElementById('fStock').value = x.stock != null ? x.stock : ''; document.getElementById('fRec').value = x.recibido || ''; document.getElementById('fArr').value = x.arranquesCargados != null ? x.arranquesCargados : ''; document.getElementById('fObs').value = x.obs || '';
