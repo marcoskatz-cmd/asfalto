@@ -8,8 +8,15 @@
  * Consumo de asfalto: entre dos mediciones consecutivas del tanque,
  *   consumo = stock anterior + asfalto recibido en el tramo − stock actual
  * y se reparte en los días del tramo en proporción a la mezcla que salió cada día.
- * % real de asfalto = consumo ÷ mezcla (del tramo). Se compara con el % teórico de CONFIG.
+ * % real de asfalto = consumo ÷ mezcla equivalente (del tramo). Se compara con el % teórico de CONFIG.
+ *
+ * Purga: cada vez que se prende la planta se tiran 2 t al arrancar y 2 t al apagar (no figuran en
+ * la mezcla cargada). La 1ª y la última tonelada llevan 50 % del asfalto normal, la 2ª y la anteúltima
+ * 90 % → cada arranque consume el asfalto de 0,5+0,9+0,9+0,5 = 2,8 t de mezcla normal.
+ * Mezcla equivalente = mezcla despachada + 2,8 t × arranques. Por defecto 1 arranque por día con mezcla.
  */
+const PURGA_T = 4;            // t de mezcla que se tiran por arranque
+const PURGA_EQ_T = 2.8;       // t de mezcla normal equivalentes en asfalto por arranque
 
 const TABS = { CONFIG: 'CONFIG', DIARIO: 'DIARIO', SALIDAS: 'SALIDAS' };
 const TZ = 'America/Argentina/Buenos_Aires';
@@ -119,7 +126,7 @@ function setup() {
   let d = ss.getSheetByName(TABS.DIARIO);
   if (!d) {
     d = ss.insertSheet(TABS.DIARIO);
-    d.getRange(1, 1, 1, 6).setValues([['FECHA', 'STOCK_T', 'RECIBIDO_T', 'OBS', 'CARGADO POR', 'TIMESTAMP']]).setFontWeight('bold');
+    d.getRange(1, 1, 1, 7).setValues([['FECHA', 'STOCK_T', 'RECIBIDO_T', 'OBS', 'CARGADO POR', 'TIMESTAMP', 'ARRANQUES']]).setFontWeight('bold');
     d.getRange(1, 1, d.getMaxRows(), 1).setNumberFormat('yyyy-mm-dd');
     d.setFrozenRows(1);
   }
@@ -196,9 +203,9 @@ function leerDiario_() {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TABS.DIARIO);
   const out = {};
   if (!sh || sh.getLastRow() < 2) return out;
-  sh.getRange(2, 1, sh.getLastRow() - 1, 6).getValues().forEach((r, i) => {
+  sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues().forEach((r, i) => {
     const f = fechaStr_(r[0]); if (!f) return;
-    out[f] = { fecha: f, stock: aNumero_(r[1]), recibido: aNumero_(r[2]) || 0, obs: String(r[3] || ''), por: String(r[4] || ''), fila: i + 2 };
+    out[f] = { fecha: f, stock: aNumero_(r[1]), recibido: aNumero_(r[2]) || 0, obs: String(r[3] || ''), por: String(r[4] || ''), arranques: aNumero_(r[6]), fila: i + 2 };
   });
   return out;
 }
@@ -243,6 +250,13 @@ function getDatos(user) {
   const calendario = [];
   for (let f = inicio; f <= fin; f = sumarDias_(f, 1)) calendario.push(f);
 
+  // Arranques de planta por día (en blanco = 1 si salió mezcla) y mezcla equivalente con la purga
+  const arranques = f => {
+    const a = diario[f] ? diario[f].arranques : null;
+    return a !== null && a !== undefined ? a : (mezcla[f] && mezcla[f].total > 0 ? 1 : 0);
+  };
+  const mezEq = f => (mezcla[f] ? mezcla[f].total : 0) + arranques(f) * PURGA_EQ_T;
+
   // Tramos entre mediciones de stock: consumo = stock_ant + recibido(tramo) − stock_act
   const medidos = calendario.filter(f => diario[f] && diario[f].stock !== null);
   const consumoDia = {}, tramoDe = {};
@@ -251,13 +265,15 @@ function getDatos(user) {
     const a = medidos[i - 1], b = medidos[i];
     const dias = calendario.filter(f => f > a && f <= b);
     const recibido = dias.reduce((s, f) => s + (diario[f] ? diario[f].recibido : 0), 0);
-    const mez = dias.reduce((s, f) => s + (mezcla[f] ? mezcla[f].total : 0), 0);
+    const mezReal = dias.reduce((s, f) => s + (mezcla[f] ? mezcla[f].total : 0), 0);
+    const arr = dias.reduce((s, f) => s + arranques(f), 0);
+    const mez = dias.reduce((s, f) => s + mezEq(f), 0);
     const consumo = diario[a].stock + recibido - diario[b].stock;
     const porc = mez > 0 ? consumo / mez * 100 : null;
-    const tr = { desde: a, hasta: b, dias: dias.length, recibido, mezcla: mez, consumo, porc, raro: consumo < 0 || (mez === 0 && Math.abs(consumo) > 0.05) };
+    const tr = { desde: a, hasta: b, dias: dias.length, recibido, mezcla: mezReal, arranques: arr, purga: arr * PURGA_T, mezclaEq: mez, consumo, porc, raro: consumo < 0 || (mez === 0 && Math.abs(consumo) > 0.05) };
     tramos.push(tr);
     dias.forEach(f => {
-      const m = mezcla[f] ? mezcla[f].total : 0;
+      const m = mezEq(f);
       consumoDia[f] = mez > 0 ? consumo * m / mez : (f === b ? consumo : 0);
       tramoDe[f] = tr;
     });
@@ -265,23 +281,25 @@ function getDatos(user) {
 
   // Stock estimado para los días sin medición: última medición + recibido − mezcla × % teórico
   let ultimoStock = null, ultimoStockFecha = null;
-  const acum = { mezcla: 0, consumo: 0, mezclaConConsumo: 0, recibido: 0, porDestino: {}, diasConMezcla: 0 };
+  const acum = { mezcla: 0, consumo: 0, mezclaConConsumo: 0, recibido: 0, porDestino: {}, diasConMezcla: 0, arranques: 0 };
   destinos.forEach(d => acum.porDestino[d] = 0);
   let stockEst = null;
   const serie = calendario.map(f => {
     const d = diario[f] || { stock: null, recibido: 0, obs: '', por: '' };
     const m = mezcla[f] || { total: 0, por: {} };
     const medido = d.stock !== null;
-    if (stockEst !== null) stockEst = porcTeo === null ? null : stockEst + d.recibido - m.total * porcTeo / 100;
+    const arr = arranques(f), eq = mezEq(f);
+    if (stockEst !== null) stockEst = porcTeo === null ? null : stockEst + d.recibido - eq * porcTeo / 100;
     if (medido) { ultimoStock = d.stock; ultimoStockFecha = f; stockEst = d.stock; }
     const consumo = consumoDia[f] !== undefined ? consumoDia[f] : null;
     const tr = tramoDe[f] || null;
-    acum.mezcla += m.total; acum.recibido += d.recibido; if (m.total > 0) acum.diasConMezcla++;
+    acum.mezcla += m.total; acum.recibido += d.recibido; acum.arranques += arr; if (m.total > 0) acum.diasConMezcla++;
     Object.keys(m.por).forEach(k => acum.porDestino[k] = (acum.porDestino[k] || 0) + m.por[k]);
-    if (consumo !== null) { acum.consumo += consumo; acum.mezclaConConsumo += m.total; }
+    if (consumo !== null) { acum.consumo += consumo; acum.mezclaConConsumo += eq; }
     const porc = tr && tr.porc !== null ? tr.porc : null;
     return {
       fecha: f, mezcla: m.total, porDestino: m.por, recibido: d.recibido, obs: d.obs, por: d.por,
+      arranques: arr, arranquesCargados: d.arranques !== null && d.arranques !== undefined ? d.arranques : null, purga: arr * PURGA_T, mezclaEq: eq,
       stock: medido ? d.stock : null, stockEst: medido ? null : (stockEst !== null ? Math.max(0, stockEst) : null),
       consumo, porc, tramoDias: tr ? tr.dias : null, tramoRaro: tr ? tr.raro : false,
       cargado: !!diario[f] || m.total > 0,
@@ -305,13 +323,13 @@ function getDatos(user) {
 
   return {
     user, hoy, inicio, destinos,
-    cfg: { PORC_TEORICO: porcTeo, TOLERANCIA: tol, STOCK_MINIMO: stockMin, CAPACIDAD_TANQUE: capacidad, DESTINO_AUTOVIAS: String(cfg.DESTINO_AUTOVIAS || destinos[0] || '') },
+    cfg: { PURGA_T, PURGA_EQ_T, PORC_TEORICO: porcTeo, TOLERANCIA: tol, STOCK_MINIMO: stockMin, CAPACIDAD_TANQUE: capacidad, DESTINO_AUTOVIAS: String(cfg.DESTINO_AUTOVIAS || destinos[0] || '') },
     kpi: {
       stock: ultimoStock, stockFecha: ultimoStockFecha, diasSinMedir,
       consumoProm, mezclaProm, porcAcum,
       autonomia: ultimoStock !== null && consumoProm > 0 ? ultimoStock / consumoProm : null,
       ultimoTramo,
-      mezclaTotal: acum.mezcla, consumoTotal: acum.consumo, mezclaConConsumo: acum.mezclaConConsumo, recibidoTotal: acum.recibido, diasConMezcla: acum.diasConMezcla, porDestino: acum.porDestino,
+      mezclaTotal: acum.mezcla, consumoTotal: acum.consumo, mezclaConConsumo: acum.mezclaConConsumo, recibidoTotal: acum.recibido, arranquesTotal: acum.arranques, purgaTotal: acum.arranques * PURGA_T, diasConMezcla: acum.diasConMezcla, porDestino: acum.porDestino,
     },
     serie, tramos, avisos,
   };
@@ -343,6 +361,12 @@ function guardarDia(p, user) {
     salidas[d] = t;
   });
   const totalMezcla = Object.values(salidas).reduce((s, t) => s + t, 0);
+  // Arranques: en blanco = automático (1 si salió mezcla)
+  let arranques = '';
+  if (p.arranques !== undefined && p.arranques !== null && String(p.arranques).trim() !== '') {
+    arranques = Number(p.arranques);
+    if (!Number.isInteger(arranques) || arranques < 0 || arranques > 10) throw new Error('Arranques de planta inválidos (0 a 10)');
+  }
   if (stock === null && recibido === 0 && totalMezcla === 0) throw new Error('No hay nada para guardar: cargá el stock del tanque o alguna salida');
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -352,8 +376,9 @@ function guardarDia(p, user) {
     // DIARIO: una fila por fecha
     const shD = ss.getSheetByName(TABS.DIARIO);
     diario = leerDiario_();
-    const rowD = [new Date(fecha + 'T12:00:00'), stock === null ? '' : stock, recibido, String(p.obs || '').slice(0, 300), user, new Date()];
-    if (diario[fecha]) shD.getRange(diario[fecha].fila, 1, 1, 6).setValues([rowD]); else shD.appendRow(rowD);
+    if (shD.getRange(1, 7).getValue() === '') shD.getRange(1, 7).setValue('ARRANQUES').setFontWeight('bold');
+    const rowD = [new Date(fecha + 'T12:00:00'), stock === null ? '' : stock, recibido, String(p.obs || '').slice(0, 300), user, new Date(), arranques];
+    if (diario[fecha]) shD.getRange(diario[fecha].fila, 1, 1, 7).setValues([rowD]); else shD.appendRow(rowD);
     // SALIDAS: una fila por fecha y destino; las del día que no vienen o vienen en 0 se borran
     const shS = ss.getSheetByName(TABS.SALIDAS);
     const existentes = leerSalidas_().filter(s => s.fecha === fecha);
@@ -397,7 +422,7 @@ function avisarCierre_(fecha, user) {
   const stockTxt = d.stock !== null ? 'stock ' + fmtT_(d.stock) + ' t' : 'sin medición de tanque';
   const titulo = 'Planta ' + fmtFechaAR_(fecha) + ': ' + fmtT_(d.mezcla) + ' t de mezcla · ' + stockTxt;
   const lineas = [
-    'MEZCLA: ' + fmtT_(d.mezcla) + ' t' + (destinos ? ' (' + destinos + ')' : ''),
+    'MEZCLA: ' + fmtT_(d.mezcla) + ' t' + (destinos ? ' (' + destinos + ')' : '') + (d.arranques ? ' + purga ' + fmtT_(d.purga) + ' t (' + d.arranques + (d.arranques === 1 ? ' arranque)' : ' arranques)') : ''),
     'ASFALTO: ' + (d.consumo !== null ? 'consumo ' + fmtT_(d.consumo) + ' t' + (d.tramoDias > 1 ? ' (tramo de ' + d.tramoDias + ' días)' : '') + ' → ' + fmtP_(d.porc) + (datos.cfg.PORC_TEORICO !== null ? ' real vs ' + fmtP_(datos.cfg.PORC_TEORICO) + ' teórico' : ' real') : 'consumo pendiente hasta la próxima medición del tanque') + (d.recibido ? ' · recibido ' + fmtT_(d.recibido) + ' t' : ''),
     'TANQUE: ' + (d.stock !== null ? fmtT_(d.stock) + ' t' + (k.autonomia !== null ? ' ≈ ' + fmtT_(k.autonomia) + ' días al ritmo actual' : '') : 'no se midió'),
   ];
