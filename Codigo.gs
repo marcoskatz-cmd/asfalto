@@ -61,7 +61,7 @@ function doPost(e) {
       case 'guardarConfig': data = guardarConfig(p, user); break;
       default: throw new Error('Acción desconocida: ' + body.accion);
     }
-    if (body.con_all && body.accion !== 'datos') data.all = getDatos(user);
+    if (body.con_all && body.accion !== 'datos' && !data.all) data.all = getDatos(user);
     return json_({ ok: true, data, usuario: user });
   } catch (err) {
     return json_({ ok: false, error: err.message || String(err) });
@@ -397,9 +397,13 @@ function guardarDia(p, user) {
     });
     Object.keys(pendientes).forEach(d => { if (pendientes[d] > 0) shS.appendRow([new Date(fecha + 'T12:00:00'), d, pendientes[d], user, new Date()]); });
   } finally { lock.releaseLock(); }
-  let aviso = null;
-  try { aviso = avisarCierre_(fecha, user); } catch (err) { aviso = { ok: false, error: String(err.message || err) }; }
-  return { ok: true, editado: !!diario[fecha], aviso };
+  // Un solo getDatos: lo usa el aviso y se devuelve como `all` (la app lo pide con con_all).
+  // Antes se calculaba dos veces y, sumado al aviso, la respuesta podía pasar el tiempo de espera del celular.
+  SpreadsheetApp.flush();
+  let all = null, aviso = null;
+  try { all = getDatos(user); } catch (err) { aviso = { ok: false, error: 'datos: ' + String(err.message || err) }; }
+  if (all) { try { aviso = avisarCierre_(fecha, user, all); } catch (err) { aviso = { ok: false, error: String(err.message || err) }; } }
+  return { ok: true, editado: !!diario[fecha], aviso, all };
 }
 
 function borrarDia(fecha, user) {
@@ -417,10 +421,10 @@ function borrarDia(fecha, user) {
 }
 
 // ---------- Aviso por la app INGECO al cerrar el día ----------
-function avisarCierre_(fecha, user) {
+function avisarCierre_(fecha, user, datosYaCalculados) {
   const clave = PropertiesService.getScriptProperties().getProperty('CLAVE_' + MODULO_INGECO);
   if (!clave) return { ok: false, error: 'Sin CLAVE_' + MODULO_INGECO };
-  const datos = getDatos(user);
+  const datos = datosYaCalculados || getDatos(user);
   const d = datos.serie.find(x => x.fecha === fecha);
   if (!d) return { ok: false, error: 'día no encontrado' };
   const k = datos.kpi;
