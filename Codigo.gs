@@ -170,7 +170,13 @@ function guardarConfig(p, user) {
     if (permitidas.indexOf(k) < 0) return;
     let v = cfg[k];
     if (k === 'PIN') { v = String(v).trim(); if (!/^\d{4,8}$/.test(v)) throw new Error('El PIN debe tener entre 4 y 8 números'); }
-    else if (k === 'DESTINOS' || k === 'DESTINO_AUTOVIAS') { v = String(v).trim(); if (!v) throw new Error('Falta ' + k); }
+    else if (k === 'DESTINOS' || k === 'DESTINO_AUTOVIAS') {
+      v = String(v).trim(); if (!v) throw new Error('Falta ' + k);
+      if (k === 'DESTINO_AUTOVIAS') {   // tiene que ser uno de los destinos, si no Autovías no recibe la mezcla
+        const lista = String(cfg.DESTINOS !== undefined ? cfg.DESTINOS : leerConfig_().DESTINOS || '').split(',').map(x => x.trim()).filter(Boolean);
+        if (lista.length && !lista.some(d => normDestino_(d) === normDestino_(v))) throw new Error('DESTINO_AUTOVIAS ("' + v + '") tiene que ser uno de los destinos: ' + lista.join(', ') + '. Si no, Obra Autovías no recibe la mezcla.');
+      }
+    }
     else if (String(v).trim() === '') { v = ''; }   // en blanco = sin definir (sin avisos ni comparaciones)
     else { v = Number(String(v).replace(',', '.')); if (isNaN(v) || v < 0) throw new Error('Valor inválido en ' + k); }
     const i = claves.indexOf(k);
@@ -444,14 +450,31 @@ function avisarCierre_(fecha, user) {
 }
 
 // ---------- Integración: mezcla por día para otro sistema (Obra Autovías) ----------
-// POST { accion:'mezcla', clave, payload:{ destino?, desde? } } → { destino, dias:[{fecha, t}] }
+// POST { accion:'mezcla', clave, payload:{ destino?, desde? } } → { destino, dias:[{fecha, t}], destinos:[...], aviso }
+// El destino se compara sin mayúsculas, tildes ni espacios de más ("Autovias" = "AUTOVÍAS " = "Autovías"),
+// así un retoque del nombre en CONFIG o en la planilla no deja a Autovías sin mezcla.
+function normDestino_(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
 function mezclaParaIntegracion_(body, p) {
   const cfg = leerConfig_();
   const esperada = String(cfg.CLAVE_API || '').trim();
   if (!esperada || String(body.clave || '').trim() !== esperada) throw new Error('Clave de integración inválida');
-  const destino = String(p.destino || cfg.DESTINO_AUTOVIAS || '').trim();
+  const pedido = String(p.destino || cfg.DESTINO_AUTOVIAS || '').trim();
   const desde = fechaStr_(p.desde) || '2000-01-01';
-  const porDia = {};
-  leerSalidas_().forEach(s => { if (s.fecha >= desde && (!destino || s.destino === destino)) porDia[s.fecha] = (porDia[s.fecha] || 0) + s.t; });
-  return { destino, dias: Object.keys(porDia).sort().map(f => ({ fecha: f, t: Math.round(porDia[f] * 100) / 100 })) };
+  const salidas = leerSalidas_();
+  const enPlanilla = []; salidas.forEach(s => { if (s.destino && enPlanilla.indexOf(s.destino) < 0) enPlanilla.push(s.destino); });
+  let destino = pedido, aviso = '';
+  if (pedido && enPlanilla.indexOf(pedido) < 0) {
+    const n = normDestino_(pedido);
+    const raiz = n.split(' ')[0].slice(0, 5);   // "autov" alcanza para Autovía / Autovías / Autovía del NOA
+    const parecido = enPlanilla.find(d => normDestino_(d) === n)
+      || enPlanilla.find(d => normDestino_(d).indexOf(n) >= 0 || n.indexOf(normDestino_(d)) >= 0)
+      || (raiz.length >= 4 ? enPlanilla.find(d => normDestino_(d).indexOf(raiz) === 0) : null);
+    if (parecido) { destino = parecido; aviso = 'El destino "' + pedido + '" no existe tal cual en la planilla; se usa "' + parecido + '".'; }
+    else aviso = 'Ningún despacho de mezcla tiene el destino "' + pedido + '". Destinos con mezcla cargada: ' + (enPlanilla.join(', ') || 'ninguno') + '. Revisar DESTINO_AUTOVIAS en la configuración de Stock de asfalto.';
+  }
+  const nd = normDestino_(destino), porDia = {};
+  salidas.forEach(s => { if (s.fecha >= desde && (!destino || normDestino_(s.destino) === nd)) porDia[s.fecha] = (porDia[s.fecha] || 0) + s.t; });
+  return { destino, aviso, destinos: enPlanilla, dias: Object.keys(porDia).sort().map(f => ({ fecha: f, t: Math.round(porDia[f] * 100) / 100 })) };
 }
