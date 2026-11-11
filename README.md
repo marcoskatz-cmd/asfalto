@@ -3,7 +3,7 @@
 Carga diaria del plantista (mezcla que salió por destino, asfalto recibido, asfalto en tanque) y panel con consumo real de asfalto, % real vs teórico, stock y autonomía. Frontend en GitHub Pages + backend Apps Script/Google Sheets. Acceso por PIN o desde la App INGECO (módulo `ASFALTO`).
 
 ## Qué hace
-- **Cargar día**: toneladas de mezcla por destino (CONFIG `DESTINOS`), asfalto recibido (t) y stock del tanque al cierre (t). Vista previa POKAYOKE: stock esperado, consumo y % que resultan antes de guardar.
+- **Cargar día**: toneladas de mezcla por destino fijo (CONFIG `DESTINOS`: Autovías, Bacheo) más "otras obras" de nombre libre con desplegable de las ya usadas (se guardan solas en CONFIG `OBRAS`), asfalto recibido (t) y stock del tanque al cierre (t). Vista previa POKAYOKE: stock esperado, consumo y % que resultan antes de guardar.
 - **Consumo de asfalto** = stock anterior + recibido − stock actual, entre dos mediciones consecutivas; se reparte por día según la mezcla. **% real** = consumo ÷ mezcla del tramo, comparado con `PORC_TEORICO` ± `TOLERANCIA`.
 - **Panel**: tanque (t, % lleno, autonomía), % último tramo y promedio, mezcla y consumo por día; gráficos de curvas (mezcla + consumo + recibido), % real vs teórico y stock (medido / estimado / mínimo).
 - **Avisos** por la App INGECO en cada cierre (urgente si el stock baja del mínimo).

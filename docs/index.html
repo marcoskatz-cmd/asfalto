@@ -78,6 +78,8 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--azul-claro);outl
 .preview b{color:var(--tinta)}
 .dest{border:1px solid var(--linea);border-radius:var(--radio-s);padding:10px 12px;margin-top:8px;background:var(--fondo);display:flex;align-items:center;gap:10px}
 .dest label{margin:0;flex:1}.dest input{width:120px;text-align:right}
+.dest input.obraNombre{flex:1;width:auto;min-width:0;text-align:left}.dest .quitar{border:0;background:none;color:var(--texto-2);font-size:18px;padding:0 4px;cursor:pointer}
+.subt{font-size:13px;color:var(--texto-2);margin:12px 0 2px}.btnObra{margin-top:8px;width:100%;border:1px dashed var(--linea);background:none;border-radius:var(--radio-s);padding:10px;color:var(--texto-2);cursor:pointer}
 .unid{font-size:13px;color:var(--texto-2);min-width:14px}
 table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
 th{background:var(--fondo);color:var(--texto-2);padding:8px 6px;text-align:left;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border-bottom:1px solid var(--linea-fuerte)}
@@ -131,6 +133,10 @@ dl{font-size:13px}dt{font-weight:600;margin-top:10px;color:var(--tinta)}dd{margi
     <label>Fecha</label><input type="date" id="fFecha">
     <label>Mezcla que salió <span class="small">(toneladas por destino; dejá vacío si no salió)</span></label>
     <div id="fSalidas"></div>
+    <div class="subt">Otras obras <span class="small">(escribí el nombre o elegilo de la lista; las obras nuevas quedan guardadas para la próxima)</span></div>
+    <div id="fObras"></div>
+    <button type="button" class="btnObra" onclick="agregarObra()">＋ Agregar obra</button>
+    <datalist id="dlObras"></datalist>
     <label>Asfalto recibido hoy <span class="small">(t, vacío = no llegó)</span></label><input type="number" id="fRec" inputmode="decimal" min="0" step="0.1" placeholder="0">
     <label>Asfalto en el tanque al cierre <span class="small">(t)</span></label><input type="number" id="fStock" inputmode="decimal" min="0" step="0.1" placeholder="Ej: 42,5">
     <div class="hint">Si hoy no se midió, dejalo vacío: el consumo se calcula cuando se vuelva a medir.</div>
@@ -162,7 +168,7 @@ dl{font-size:13px}dt{font-weight:600;margin-top:10px;color:var(--tinta)}dd{margi
   <div class="card">
     <h3>Cómo se usa</h3>
     <dl>
-      <dt>Todos los días, al cierre de la planta</dt><dd>Pestaña <b>Cargar día</b>: cuántas toneladas de mezcla salieron para cada destino, si llegó asfalto (en t) y cuánto asfalto queda en el tanque. Guardar. Si se carga dos veces la misma fecha, se reemplaza lo anterior.</dd>
+      <dt>Todos los días, al cierre de la planta</dt><dd>Pestaña <b>Cargar día</b>: cuántas toneladas de mezcla salieron para cada destino (Autovías y Bacheo siempre están; para otra obra, "＋ Agregar obra" y escribir el nombre o elegirlo del desplegable: la obra queda guardada para las próximas cargas), si llegó asfalto (en t) y cuánto asfalto queda en el tanque. Guardar. Si se carga dos veces la misma fecha, se reemplaza lo anterior.</dd>
       <dt>Consumo de asfalto</dt><dd>Se calcula entre dos mediciones del tanque: <b>stock anterior + asfalto recibido − stock actual</b>. Si pasaron varios días sin medir, el consumo del tramo se reparte entre esos días según la mezcla que salió cada uno.</dd>
       <dt>Purga de la planta</dt><dd>Cada vez que se prende la planta se tiran 2 t al arrancar y 2 t al apagar. La 1ª y la última tonelada llevan el 50 % del asfalto de una mezcla normal y la 2ª y la anteúltima el 90 %: cada arranque gasta el asfalto de <b>2,8 t de mezcla normal</b>. Se cuenta 1 arranque por día con mezcla, salvo que se cargue otro número.</dd>
       <dt>% de asfalto real</dt><dd>Consumo de asfalto ÷ (toneladas de mezcla + 2,8 t por arranque) del mismo tramo. Se compara con el % teórico de Ajustes; si se sale de la tolerancia aparece un aviso.</dd>
@@ -353,10 +359,31 @@ function renderSalidasForm() {
   const el = document.getElementById('fSalidas');
   const actuales = {}; el.querySelectorAll('input').forEach(i => actuales[i.dataset.d] = i.value);
   el.innerHTML = D.destinos.map(d => '<div class="dest"><label>' + d + '</label><input type="number" inputmode="decimal" min="0" step="0.5" placeholder="0" data-d="' + d.replace(/"/g, '&quot;') + '" value="' + (actuales[d] || '') + '" oninput="preview()"><span class="unid">t</span></div>').join('');
+  document.getElementById('dlObras').innerHTML = (D.obras || []).map(o => '<option value="' + o.replace(/"/g, '&quot;') + '">').join('');
+}
+// Otras obras: filas variables (nombre con desplegable de obras ya usadas + toneladas)
+function agregarObra(nombre, t) {
+  const el = document.getElementById('fObras'), div = document.createElement('div');
+  div.className = 'dest obra';
+  div.innerHTML = '<input type="text" class="obraNombre" list="dlObras" placeholder="Nombre de la obra" maxlength="60" autocomplete="off" oninput="preview()"><input type="number" class="obraT" inputmode="decimal" min="0" step="0.5" placeholder="0" oninput="preview()"><span class="unid">t</span><button type="button" class="quitar" title="Quitar" onclick="this.parentNode.remove();preview()">×</button>';
+  div.querySelector('.obraNombre').value = nombre || ''; div.querySelector('.obraT').value = t != null && t !== '' ? t : '';
+  el.appendChild(div);
+  if (!nombre) div.querySelector('.obraNombre').focus();
+}
+// Carga el formulario de salidas desde { destino: t }: los fijos en sus casilleros, el resto como filas de obra
+function setSalidas(map) {
+  map = map || {};
+  document.querySelectorAll('#fSalidas input').forEach(i => i.value = map[i.dataset.d] != null && map[i.dataset.d] !== '' && map[i.dataset.d] !== 0 ? map[i.dataset.d] : '');
+  document.getElementById('fObras').innerHTML = '';
+  Object.keys(map).forEach(d => { if (!D || D.destinos.indexOf(d) < 0) { if (map[d] != null && map[d] !== '' && map[d] !== 0) agregarObra(d, map[d]); } });
 }
 ['fFecha','fRec','fStock','fArr'].forEach(id => document.getElementById(id).addEventListener('input', preview));
 function leerForm() {
   const salidas = {}; document.querySelectorAll('#fSalidas input').forEach(i => { if (i.value !== '') salidas[i.dataset.d] = Number(i.value); });
+  document.querySelectorAll('#fObras .obra').forEach(r => {
+    const n = r.querySelector('.obraNombre').value.replace(/,/g, ' ').replace(/\s+/g, ' ').trim(), v = r.querySelector('.obraT').value;
+    if (n && v !== '') salidas[n] = (salidas[n] || 0) + Number(v);
+  });
   return { fecha: document.getElementById('fFecha').value, stock: document.getElementById('fStock').value, recibido: document.getElementById('fRec').value, arranques: document.getElementById('fArr').value, salidas, obs: document.getElementById('fObs').value };
 }
 function preview() {
@@ -391,6 +418,9 @@ function guardar() {
   if (!f.fecha) return toast('Falta la fecha', 'mal');
   if (f.fecha > hoyStr()) return toast('No se puede cargar una fecha futura', 'mal');
   const mez = Object.values(f.salidas).reduce((s, t) => s + t, 0);
+  let obraIncompleta = false;
+  document.querySelectorAll('#fObras .obra').forEach(r => { const n = r.querySelector('.obraNombre').value.trim(), v = r.querySelector('.obraT').value; if ((n && v === '') || (!n && v !== '' && Number(v) > 0)) obraIncompleta = true; });
+  if (obraIncompleta) return toast('Hay una obra sin nombre o sin toneladas: completala o quitala con ×', 'mal');
   if (f.stock === '' && mez === 0 && !(Number(f.recibido) > 0)) return toast('Cargá al menos el stock del tanque o una salida de mezcla', 'mal');
   if (f.stock === '' && !confirm('No cargaste el stock del tanque. ¿Guardar igual? El consumo se calculará cuando se mida.')) return;
   // Primero queda guardado en el teléfono; después se envía (y se reintenta solo si falla la conexión)
@@ -401,7 +431,7 @@ function guardar() {
   enviarPendientes(true);
 }
 function limpiarForm() {
-  document.querySelectorAll('#fSalidas input').forEach(i => i.value = ''); document.getElementById('fRec').value = ''; document.getElementById('fStock').value = ''; document.getElementById('fArr').value = ''; document.getElementById('fObs').value = ''; document.getElementById('fFecha').value = hoyStr();
+  setSalidas({}); document.getElementById('fRec').value = ''; document.getElementById('fStock').value = ''; document.getElementById('fArr').value = ''; document.getElementById('fObs').value = ''; document.getElementById('fFecha').value = hoyStr();
 }
 
 // ---------- cola de cargas pendientes (sin conexión) ----------
@@ -470,7 +500,7 @@ function renderPendientes() {
 function corregirPendiente(fecha) {
   const x = leerCola()[fecha]; if (!x) return;
   document.getElementById('fFecha').value = fecha; document.getElementById('fStock').value = x.stock; document.getElementById('fRec').value = x.recibido; document.getElementById('fArr').value = x.arranques || ''; document.getElementById('fObs').value = x.obs || '';
-  document.querySelectorAll('#fSalidas input').forEach(i => i.value = x.salidas[i.dataset.d] != null ? x.salidas[i.dataset.d] : '');
+  setSalidas(x.salidas);
   const c = leerCola(); delete c[fecha]; escribirCola(c);
   document.querySelector('.tabs button[data-t=carga]').click(); window.scrollTo(0,0); preview();
 }
@@ -484,7 +514,7 @@ setInterval(() => { const c = leerCola(); if (Object.keys(c).some(f => !c[f].err
 function editar(fecha) {
   const x = D.serie.find(s => s.fecha === fecha); if (!x) return;
   document.getElementById('fFecha').value = fecha; document.getElementById('fStock').value = x.stock != null ? x.stock : ''; document.getElementById('fRec').value = x.recibido || ''; document.getElementById('fArr').value = x.arranquesCargados != null ? x.arranquesCargados : ''; document.getElementById('fObs').value = x.obs || '';
-  document.querySelectorAll('#fSalidas input').forEach(i => i.value = x.porDestino[i.dataset.d] || '');
+  setSalidas(x.porDestino);
   document.querySelector('.tabs button[data-t=carga]').click(); window.scrollTo(0,0); preview();
 }
 function borrar(fecha) {
@@ -500,6 +530,7 @@ const CFG_CAMPOS = [
   ['CAPACIDAD_TANQUE', 'Capacidad del tanque (t)', 'decimal'],
   ['DESTINOS', 'Destinos de la mezcla (separados por coma)', 'text'],
   ['DESTINO_AUTOVIAS', 'Destino que lee la app de Obra Autovías', 'text'],
+  ['OBRAS', 'Otras obras del desplegable (separadas por coma; se agregan solas al cargar)', 'text'],
   ['PIN', 'PIN de la app', 'text'],
 ];
 function dirty() { let d = false; document.querySelectorAll('#cfgForm input').forEach(i => { if (String(i.value).trim() !== String(CFG[i.dataset.k] == null ? '' : CFG[i.dataset.k]).trim()) d = true; }); document.getElementById('savebar').classList.toggle('on', d); }
