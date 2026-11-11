@@ -3,7 +3,8 @@
  * Apps Script + Sheets. Frontend en GitHub Pages (docs/) → API JSON por doPost.
  *
  * Carga diaria del plantista: stock de asfalto en el tanque al cierre, asfalto recibido en el día
- * y toneladas de mezcla que salieron para cada destino (Autovías, Bacheo…).
+ * y toneladas de mezcla que salieron para cada destino: los fijos de CONFIG DESTINOS (Autovías, Bacheo)
+ * más otras obras que se escriben libres y quedan guardadas en CONFIG OBRAS para elegirlas la próxima vez.
  *
  * Consumo de asfalto: entre dos mediciones consecutivas del tanque,
  *   consumo = stock anterior + asfalto recibido en el tramo − stock actual
@@ -114,6 +115,7 @@ function setup() {
       ['PIN', '1234', 'PIN de acceso a la app (desde la app INGECO no hace falta)'],
       ['DESTINOS', 'Autovías, Bacheo', 'Adónde puede salir la mezcla, separados por coma. El primero se usa para Autovías'],
       ['DESTINO_AUTOVIAS', 'Autovías', 'Nombre del destino cuya mezcla lee el sistema de Obra Autovías'],
+      ['OBRAS', '', 'Otras obras a las que salió mezcla (separadas por coma). Se agregan solas desde la app al cargar una obra nueva; acá se pueden borrar o renombrar'],
       ['PORC_TEORICO', 4.8, '% de asfalto que debería llevar la mezcla según la fórmula'],
       ['TOLERANCIA', 0.4, 'Puntos de % de desvío admitidos antes de avisar (ej. 0,4 → entre 4,4 y 5,2)'],
       ['STOCK_MINIMO', 20, 't de asfalto en tanque por debajo de las cuales se avisa'],
@@ -164,7 +166,7 @@ function guardarConfig(p, user) {
   if (!user) throw new Error('Sin permiso');
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TABS.CONFIG);
   const cfg = p.config || {};
-  const permitidas = ['PIN', 'DESTINOS', 'DESTINO_AUTOVIAS', 'PORC_TEORICO', 'TOLERANCIA', 'STOCK_MINIMO', 'CAPACIDAD_TANQUE'];
+  const permitidas = ['PIN', 'DESTINOS', 'DESTINO_AUTOVIAS', 'OBRAS', 'PORC_TEORICO', 'TOLERANCIA', 'STOCK_MINIMO', 'CAPACIDAD_TANQUE'];
   const claves = sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), 1).getValues().map(r => String(r[0]).trim());
   Object.keys(cfg).forEach(k => {
     if (permitidas.indexOf(k) < 0) return;
@@ -177,6 +179,7 @@ function guardarConfig(p, user) {
         if (lista.length && !lista.some(d => normDestino_(d) === normDestino_(v))) throw new Error('DESTINO_AUTOVIAS ("' + v + '") tiene que ser uno de los destinos: ' + lista.join(', ') + '. Si no, Obra Autovías no recibe la mezcla.');
       }
     }
+    else if (k === 'OBRAS') { v = limpiarObras_(String(v).split(','), destinos_(cfg.DESTINOS !== undefined ? { DESTINOS: cfg.DESTINOS } : leerConfig_())).join(', '); }
     else if (String(v).trim() === '') { v = ''; }   // en blanco = sin definir (sin avisos ni comparaciones)
     else { v = Number(String(v).replace(',', '.')); if (isNaN(v) || v < 0) throw new Error('Valor inválido en ' + k); }
     const i = claves.indexOf(k);
@@ -187,6 +190,36 @@ function guardarConfig(p, user) {
 }
 function destinos_(cfg) {
   return String(cfg.DESTINOS || 'Autovías, Bacheo').split(',').map(s => s.trim()).filter(Boolean);
+}
+/** Otras obras (destinos variables): CONFIG OBRAS más cualquier destino ya cargado en SALIDAS que no sea fijo. */
+function obras_(cfg, salidas) {
+  const fijos = destinos_(cfg);
+  const lista = String(cfg.OBRAS || '').split(',');
+  (salidas || []).forEach(s => { if (s.t > 0) lista.push(s.destino); });
+  return limpiarObras_(lista, fijos);
+}
+/** Normaliza nombres de obra: recorta, saca duplicados (sin mayúsculas ni tildes) y los que ya son destinos fijos. */
+function limpiarObras_(lista, fijos) {
+  const out = [], vistos = (fijos || []).map(normDestino_);
+  lista.forEach(x => {
+    const n = String(x || '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (!n) return;
+    const k = normDestino_(n);
+    if (vistos.indexOf(k) >= 0) return;
+    vistos.push(k); out.push(n);
+  });
+  return out.sort((a, b) => a.localeCompare(b, 'es'));
+}
+/** Agrega a CONFIG OBRAS las obras nuevas que vinieron en una carga (una sola vez cada una). */
+function registrarObras_(nuevas) {
+  if (!nuevas.length) return;
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TABS.CONFIG);
+  const claves = sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), 1).getValues().map(r => String(r[0]).trim());
+  const i = claves.indexOf('OBRAS');
+  const actuales = i >= 0 ? String(sh.getRange(i + 2, 2).getValue() || '').split(',') : [];
+  const lista = limpiarObras_(actuales.concat(nuevas), destinos_(leerConfig_()));
+  if (i >= 0) sh.getRange(i + 2, 2).setValue(lista.join(', '));
+  else sh.appendRow(['OBRAS', lista.join(', '), 'Otras obras a las que salió mezcla (separadas por coma). Se agregan solas desde la app al cargar una obra nueva; acá se pueden borrar o renombrar']);
 }
 
 // ---------- Utilidades ----------
@@ -236,6 +269,7 @@ function getDatos(user) {
   const destinos = destinos_(cfg);
   const diario = leerDiario_();
   const salidas = leerSalidas_();
+  const obras = obras_(cfg, salidas);   // destinos variables (otras obras), para el desplegable de la app
   // Parámetros en blanco = sin definir: no se compara ni se estima nada con ellos.
   const porcTeo = aNumero_(cfg.PORC_TEORICO), tol = aNumero_(cfg.TOLERANCIA) || 0;
   const stockMin = aNumero_(cfg.STOCK_MINIMO), capacidad = aNumero_(cfg.CAPACIDAD_TANQUE);
@@ -250,7 +284,6 @@ function getDatos(user) {
   salidas.forEach(s => {
     const m = mezcla[s.fecha] || (mezcla[s.fecha] = { total: 0, por: {} });
     m.total += s.t; m.por[s.destino] = (m.por[s.destino] || 0) + s.t;
-    if (destinos.indexOf(s.destino) < 0 && s.t > 0) destinos.push(s.destino);   // destino viejo que ya no está en CONFIG
   });
 
   const calendario = [];
@@ -288,7 +321,7 @@ function getDatos(user) {
   // Stock estimado para los días sin medición: última medición + recibido − mezcla × % teórico
   let ultimoStock = null, ultimoStockFecha = null;
   const acum = { mezcla: 0, consumo: 0, mezclaConConsumo: 0, recibido: 0, porDestino: {}, diasConMezcla: 0, arranques: 0 };
-  destinos.forEach(d => acum.porDestino[d] = 0);
+  destinos.concat(obras).forEach(d => acum.porDestino[d] = 0);
   let stockEst = null;
   const serie = calendario.map(f => {
     const d = diario[f] || { stock: null, recibido: 0, obs: '', por: '' };
@@ -328,7 +361,7 @@ function getDatos(user) {
   if (diasSinMedir !== null && diasSinMedir >= 2) avisos.push({ tipo: 'warn', msg: 'Hace ' + diasSinMedir + ' días que no se carga el stock del tanque (último: ' + fmtFechaAR_(ultimoStockFecha) + ').' });
 
   return {
-    user, hoy, inicio, destinos,
+    user, hoy, inicio, destinos, obras,
     cfg: { PURGA_T, PURGA_EQ_T, PORC_TEORICO: porcTeo, TOLERANCIA: tol, STOCK_MINIMO: stockMin, CAPACIDAD_TANQUE: capacidad, DESTINO_AUTOVIAS: String(cfg.DESTINO_AUTOVIAS || destinos[0] || '') },
     kpi: {
       stock: ultimoStock, stockFecha: ultimoStockFecha, diasSinMedir,
@@ -358,13 +391,24 @@ function guardarDia(p, user) {
   if (stock !== null && capacidad > 0 && stock > capacidad * 1.05) throw new Error('El stock (' + stock + ' t) supera la capacidad del tanque (' + capacidad + ' t)');
   const recibido = aNumero_(p.recibido) || 0;
   if (recibido < 0 || recibido > 10000) throw new Error('Asfalto recibido fuera de rango');
+  // Destinos: los fijos de CONFIG (Autovías, Bacheo…) más otras obras, que se escriben libres y quedan
+  // registradas en CONFIG OBRAS para el desplegable. Si una obra ya existe con otra mayúscula/tilde se usa el nombre guardado.
   const destinos = destinos_(cfg);
-  const salidas = {};
-  Object.keys(p.salidas || {}).forEach(d => {
-    const t = aNumero_(p.salidas[d]) || 0;
-    if (t < 0 || t > 5000) throw new Error('Mezcla fuera de rango para ' + d);
-    if (destinos.indexOf(d) < 0) throw new Error('Destino desconocido: ' + d);
-    salidas[d] = t;
+  const conocidas = obras_(cfg, leerSalidas_());
+  const salidas = {}, obrasNuevas = [];
+  Object.keys(p.salidas || {}).forEach(d0 => {
+    const t = aNumero_(p.salidas[d0]) || 0;
+    if (t < 0 || t > 5000) throw new Error('Mezcla fuera de rango para ' + d0);
+    let d = String(d0 || '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (!d) { if (t > 0) throw new Error('Falta el nombre de la obra en una salida de ' + t + ' t'); return; }
+    const n = normDestino_(d);
+    const fijo = destinos.find(x => normDestino_(x) === n);
+    if (fijo) d = fijo;
+    else {
+      const conocida = conocidas.find(x => normDestino_(x) === n);
+      if (conocida) d = conocida; else if (t > 0) obrasNuevas.push(d);
+    }
+    salidas[d] = (salidas[d] || 0) + t;
   });
   const totalMezcla = Object.values(salidas).reduce((s, t) => s + t, 0);
   // Arranques: en blanco = automático (1 si salió mezcla)
@@ -396,6 +440,7 @@ function guardarDia(p, user) {
       } else shS.deleteRow(s.fila);
     });
     Object.keys(pendientes).forEach(d => { if (pendientes[d] > 0) shS.appendRow([new Date(fecha + 'T12:00:00'), d, pendientes[d], user, new Date()]); });
+    registrarObras_(obrasNuevas);
   } finally { lock.releaseLock(); }
   // Un solo getDatos: lo usa el aviso y se devuelve como `all` (la app lo pide con con_all).
   // Antes se calculaba dos veces y, sumado al aviso, la respuesta podía pasar el tiempo de espera del celular.
