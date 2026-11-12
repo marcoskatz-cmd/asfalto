@@ -281,13 +281,17 @@ function getDatos(user) {
   const inicio = fechas.length ? fechas[0] : hoy;
   const fin = fechas.length && fechas[fechas.length - 1] > hoy ? fechas[fechas.length - 1] : hoy;
 
-  // mezcla por día y destino
+  // mezcla por día y destino. `total` es todo lo que salió (totales, por destino); `calc` es la que entra en el
+  // cálculo de asfalto: sin las salidas espejo de Obra Autovías, que la planta no cargó porque no tienen respaldo
+  // en el tanque (otra planta, o sin lectura que las acompañe). Si el plantista edita el día, pasan a contar.
   const mezcla = {};
   salidas.forEach(s => {
-    const m = mezcla[s.fecha] || (mezcla[s.fecha] = { total: 0, por: {}, espejo: [] });
+    const m = mezcla[s.fecha] || (mezcla[s.fecha] = { total: 0, calc: 0, por: {}, espejo: [] });
     m.total += s.t; m.por[s.destino] = (m.por[s.destino] || 0) + s.t;
-    if (esEspejo_(s) && s.t > 0 && m.espejo.indexOf(s.destino) < 0) m.espejo.push(s.destino);   // la cargó Obra Autovías
+    if (esEspejo_(s)) { if (s.t > 0 && m.espejo.indexOf(s.destino) < 0) m.espejo.push(s.destino); }
+    else m.calc += s.t;
   });
+  const mezCalc = f => mezcla[f] ? mezcla[f].calc : 0;
 
   const calendario = [];
   for (let f = inicio; f <= fin; f = sumarDias_(f, 1)) calendario.push(f);
@@ -295,9 +299,9 @@ function getDatos(user) {
   // Arranques de planta por día (en blanco = 1 si salió mezcla) y mezcla equivalente con la purga
   const arranques = f => {
     const a = diario[f] ? diario[f].arranques : null;
-    return a !== null && a !== undefined ? a : (mezcla[f] && mezcla[f].total > 0 ? 1 : 0);
+    return a !== null && a !== undefined ? a : (mezCalc(f) > 0 ? 1 : 0);
   };
-  const mezEq = f => (mezcla[f] ? mezcla[f].total : 0) + arranques(f) * PURGA_EQ_T;
+  const mezEq = f => mezCalc(f) + arranques(f) * PURGA_EQ_T;
 
   // Tramos entre mediciones de stock: consumo = stock_ant + recibido(tramo) − stock_act
   const medidos = calendario.filter(f => diario[f] && diario[f].stock !== null);
@@ -307,12 +311,13 @@ function getDatos(user) {
     const a = medidos[i - 1], b = medidos[i];
     const dias = calendario.filter(f => f > a && f <= b);
     const recibido = dias.reduce((s, f) => s + (diario[f] ? diario[f].recibido : 0), 0);
-    const mezReal = dias.reduce((s, f) => s + (mezcla[f] ? mezcla[f].total : 0), 0);
+    const mezReal = dias.reduce((s, f) => s + mezCalc(f), 0);
+    const mezFuera = dias.reduce((s, f) => s + (mezcla[f] ? mezcla[f].total - mezcla[f].calc : 0), 0);
     const arr = dias.reduce((s, f) => s + arranques(f), 0);
     const mez = dias.reduce((s, f) => s + mezEq(f), 0);
     const consumo = diario[a].stock + recibido - diario[b].stock;
     const porc = mez > 0 ? consumo / mez * 100 : null;
-    const tr = { desde: a, hasta: b, dias: dias.length, recibido, mezcla: mezReal, arranques: arr, purga: arr * PURGA_T, mezclaEq: mez, consumo, porc, raro: consumo < 0 || (mez === 0 && Math.abs(consumo) > 0.05) };
+    const tr = { desde: a, hasta: b, dias: dias.length, recibido, mezcla: mezReal, mezclaFuera: mezFuera, arranques: arr, purga: arr * PURGA_T, mezclaEq: mez, consumo, porc, raro: consumo < 0 || (mez === 0 && Math.abs(consumo) > 0.05) };
     tramos.push(tr);
     dias.forEach(f => {
       const m = mezEq(f);
@@ -328,7 +333,7 @@ function getDatos(user) {
   let stockEst = null;
   const serie = calendario.map(f => {
     const d = diario[f] || { stock: null, recibido: 0, obs: '', por: '' };
-    const m = mezcla[f] || { total: 0, por: {} };
+    const m = mezcla[f] || { total: 0, calc: 0, por: {}, espejo: [] };
     const medido = d.stock !== null;
     const arr = arranques(f), eq = mezEq(f);
     if (stockEst !== null) stockEst = porcTeo === null ? null : stockEst + d.recibido - eq * porcTeo / 100;
@@ -340,7 +345,7 @@ function getDatos(user) {
     if (consumo !== null) { acum.consumo += consumo; acum.mezclaConConsumo += eq; }
     const porc = tr && tr.porc !== null ? tr.porc : null;
     return {
-      fecha: f, mezcla: m.total, porDestino: m.por, espejo: m.espejo || [], recibido: d.recibido, obs: d.obs, por: d.por,
+      fecha: f, mezcla: m.total, mezclaFuera: m.total - m.calc, porDestino: m.por, espejo: m.espejo, recibido: d.recibido, obs: d.obs, por: d.por,
       arranques: arr, arranquesCargados: d.arranques !== null && d.arranques !== undefined ? d.arranques : null, purga: arr * PURGA_T, mezclaEq: eq,
       stock: medido ? d.stock : null, stockEst: medido ? null : (stockEst !== null ? Math.max(0, stockEst) : null),
       consumo, porc, tramoDias: tr ? tr.dias : null, tramoRaro: tr ? tr.raro : false,
@@ -350,7 +355,7 @@ function getDatos(user) {
   });
 
   // Consumo promedio diario (últimos 7 días con mezcla y consumo conocido) → autonomía
-  const conConsumo = serie.filter(x => x.consumo !== null && x.mezcla > 0).slice(-7);
+  const conConsumo = serie.filter(x => x.consumo !== null && x.mezcla - x.mezclaFuera > 0).slice(-7);
   const consumoProm = conConsumo.length ? conConsumo.reduce((s, x) => s + x.consumo, 0) / conConsumo.length : null;
   const mezclaProm = acum.diasConMezcla ? acum.mezcla / acum.diasConMezcla : null;
   const porcAcum = acum.mezclaConConsumo > 0 ? acum.consumo / acum.mezclaConConsumo * 100 : null;
