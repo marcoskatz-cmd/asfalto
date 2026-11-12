@@ -51,6 +51,8 @@ function doPost(e) {
     const p = body.payload || {};
     // Integración con otros sistemas (Autovías): clave de API de CONFIG, solo lectura.
     if (body.accion === 'mezcla') return json_({ ok: true, data: mezclaParaIntegracion_(body, p) });
+    // Obra Autovías avisa la mezcla que cargó; si la planta no la cargó, se registra acá (espejo).
+    if (body.accion === 'salidaExterna') return json_({ ok: true, data: salidaExterna_(body, p) });
     const user = autorizar_(body);
     let data;
     switch (body.accion) {
@@ -282,8 +284,9 @@ function getDatos(user) {
   // mezcla por día y destino
   const mezcla = {};
   salidas.forEach(s => {
-    const m = mezcla[s.fecha] || (mezcla[s.fecha] = { total: 0, por: {} });
+    const m = mezcla[s.fecha] || (mezcla[s.fecha] = { total: 0, por: {}, espejo: [] });
     m.total += s.t; m.por[s.destino] = (m.por[s.destino] || 0) + s.t;
+    if (esEspejo_(s) && s.t > 0 && m.espejo.indexOf(s.destino) < 0) m.espejo.push(s.destino);   // la cargó Obra Autovías
   });
 
   const calendario = [];
@@ -337,7 +340,7 @@ function getDatos(user) {
     if (consumo !== null) { acum.consumo += consumo; acum.mezclaConConsumo += eq; }
     const porc = tr && tr.porc !== null ? tr.porc : null;
     return {
-      fecha: f, mezcla: m.total, porDestino: m.por, recibido: d.recibido, obs: d.obs, por: d.por,
+      fecha: f, mezcla: m.total, porDestino: m.por, espejo: m.espejo || [], recibido: d.recibido, obs: d.obs, por: d.por,
       arranques: arr, arranquesCargados: d.arranques !== null && d.arranques !== undefined ? d.arranques : null, purga: arr * PURGA_T, mezclaEq: eq,
       stock: medido ? d.stock : null, stockEst: medido ? null : (stockEst !== null ? Math.max(0, stockEst) : null),
       consumo, porc, tramoDias: tr ? tr.dias : null, tramoRaro: tr ? tr.raro : false,
@@ -523,7 +526,66 @@ function mezclaParaIntegracion_(body, p) {
     if (parecido) { destino = parecido; aviso = 'El destino "' + pedido + '" no existe tal cual en la planilla; se usa "' + parecido + '".'; }
     else aviso = 'Ningún despacho de mezcla tiene el destino "' + pedido + '". Destinos con mezcla cargada: ' + (enPlanilla.join(', ') || 'ninguno') + '. Revisar DESTINO_AUTOVIAS en la configuración de Stock de asfalto.';
   }
-  const nd = normDestino_(destino), porDia = {};
-  salidas.forEach(s => { if (s.fecha >= desde && (!destino || normDestino_(s.destino) === nd)) porDia[s.fecha] = (porDia[s.fecha] || 0) + s.t; });
-  return { destino, aviso, destinos: enPlanilla, dias: Object.keys(porDia).sort().map(f => ({ fecha: f, t: Math.round(porDia[f] * 100) / 100 })) };
+  const nd = normDestino_(destino), porDia = {}, deLaPlanta = {};
+  salidas.forEach(s => {
+    if (s.fecha < desde || (destino && normDestino_(s.destino) !== nd)) return;
+    porDia[s.fecha] = (porDia[s.fecha] || 0) + s.t;
+    if (!esEspejo_(s)) deLaPlanta[s.fecha] = true;
+  });
+  // espejo: true = esa mezcla la cargó Autovías, no el plantista (Autovías no la toma como "informada por la planta")
+  return { destino, aviso, destinos: enPlanilla, dias: Object.keys(porDia).sort().map(f => ({ fecha: f, t: Math.round(porDia[f] * 100) / 100, espejo: !deLaPlanta[f] })) };
+}
+
+// ---------- Integración: salidas que cargó Obra Autovías y la planta no ----------
+// POST { accion:'salidaExterna', clave, payload:{ dias:[{fecha, t, por?}], por } }
+// Por cada día: si la planta ya cargó mezcla para Autovías ese día, manda lo de la planta y no se toca.
+// Si no, se escribe (o actualiza) una fila en SALIDAS con CARGADO POR = "Autovías · <quién>"; con t = 0 se borra.
+// Las filas espejo dejan de serlo apenas el plantista edita el día desde su app (guardarDia reescribe CARGADO POR).
+// Fechas anteriores al arranque de Stock de asfalto se ignoran: antes de eso la planta no llevaba registro.
+const ESPEJO_PREFIJO = 'Autovías · ';
+function esEspejo_(s) { return String(s.por || '').indexOf(ESPEJO_PREFIJO) === 0; }
+
+function salidaExterna_(body, p) {
+  const cfg = leerConfig_();
+  const esperada = String(cfg.CLAVE_API || '').trim();
+  if (!esperada || String(body.clave || '').trim() !== esperada) throw new Error('Clave de integración inválida');
+  const destino = String(cfg.DESTINO_AUTOVIAS || destinos_(cfg)[0] || 'Autovías').trim();
+  const nd = normDestino_(destino);
+  const por = ESPEJO_PREFIJO + (String(p.por || '').trim().slice(0, 50) || 'Obra Autovías');
+  const dias = Array.isArray(p.dias) ? p.dias.slice(0, 400) : [];
+  const hoy = hoy_();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const shS = ss.getSheetByName(TABS.SALIDAS);
+  const out = [];
+  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    // Arranque de Stock: primer día con carga propia de la planta (tanque o salidas que no son espejo)
+    const propias = Object.keys(leerDiario_()).concat(leerSalidas_().filter(s => !esEspejo_(s)).map(s => s.fecha)).sort();
+    const inicio = propias[0] || hoy;
+    dias.forEach(d => {
+      const fecha = fechaStr_(d && d.fecha);
+      const t = Math.round((aNumero_(d && d.t) || 0) * 100) / 100;
+      if (!fecha) return out.push({ fecha: String(d && d.fecha), r: 'fecha inválida' });
+      if (fecha < inicio) return out.push({ fecha, r: 'antes de Stock (' + inicio + ')' });
+      if (fecha > hoy) return out.push({ fecha, r: 'fecha futura' });
+      if (t < 0 || t > 5000) return out.push({ fecha, r: 't fuera de rango' });
+      const del = leerSalidas_().filter(s => s.fecha === fecha && normDestino_(s.destino) === nd);
+      if (del.some(s => !esEspejo_(s))) return out.push({ fecha, r: 'ya cargada por la planta' });
+      const filas = del.map(s => s.fila).sort((a, b) => b - a);
+      if (t > 0) {
+        const quien = d.por ? ESPEJO_PREFIJO + String(d.por).trim().slice(0, 50) : por;   // quién lo cargó en Autovías
+        const row = [new Date(fecha + 'T12:00:00'), destino, t, quien, new Date()];
+        if (filas.length) {
+          if (del.length === 1 && Math.abs(del[0].t - t) < 0.005) return out.push({ fecha, r: 'sin cambios' });
+          shS.getRange(filas.pop(), 1, 1, 5).setValues([row]);
+          filas.forEach(f => shS.deleteRow(f));   // de mayor a menor: no corre las filas pendientes
+          out.push({ fecha, r: 'actualizada', t });
+        } else { shS.appendRow(row); out.push({ fecha, r: 'agregada', t }); }
+      } else if (filas.length) {
+        filas.forEach(f => shS.deleteRow(f));
+        out.push({ fecha, r: 'borrada' });
+      } else out.push({ fecha, r: 'nada que hacer' });
+    });
+  } finally { lock.releaseLock(); }
+  return { destino, dias: out };
 }
